@@ -1,0 +1,207 @@
+\documentclass[12pt,a4paper]{report}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{amsmath, amssymb, amsthm, amsfonts}
+\usepackage{geometry}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{tikz}
+\geometry{hmargin=2.5cm,vmargin=2.5cm}
+
+% Theorem-like environments
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{example}{Example}[section]
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}[section]
+\newtheorem{property}{Property}[section]
+
+% Python listings
+\lstset{
+    language=Python,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue}\bfseries,
+    stringstyle=\color{red},
+    commentstyle=\color{green!60!black}\itshape,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    stepnumber=1,
+    frame=single,
+    breaklines=true
+}
+
+\title{Fundamentals of Natural Language Processing\\[0.3cm] \large Chapter 1 --- The NLP Landscape}
+\author{Aymen Ben Brik}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\chapter{The NLP Landscape}
+
+This opening chapter situates Natural Language Processing as a field: what problem it tries to solve, what makes that problem fundamentally hard, what canonical tasks define the discipline, and how its methods have evolved from hand-written rules to billion-parameter language models. Throughout, the goal is to develop a precise mental map you can return to as more advanced techniques are introduced.
+
+\section{What is NLP? Definition, scope, and core challenges}
+
+\subsection{Motivation}
+Computers are excellent with \emph{structured} data: spreadsheets, SQL tables, signed numerical vectors. They struggle with \emph{unstructured} human language --- the messy, fluid, ambiguous medium humans use to communicate. Yet a vast majority of the world's data exists in textual form: emails, chat messages, news articles, scientific papers, social-media posts, customer reviews, medical records, contracts. Building machines that can read, summarize, translate, search, and converse in natural language unlocks nearly every modern AI product, from search engines and recommendation systems to clinical decision-support tools and large language model assistants. \emph{Natural Language Processing} (NLP) is the field that develops and studies the algorithmic foundations of this capability.
+
+\subsection{Approach by problem: the headline that everyone misreads}
+\textbf{Problem.} Consider the (real) news headline:
+\begin{quote}
+``Stolen painting found by tree.''
+\end{quote}
+List every grammatically valid reading. How many require world knowledge to discard? How could an algorithm resolve the intended one?
+
+\textbf{Solution sketch.} The headline admits at least two parses:
+\begin{enumerate}
+    \item ``Stolen painting [found by [tree]]'' --- a tree found the painting.
+    \item ``Stolen painting [found [by tree]]'' --- the painting was found beside a tree.
+\end{enumerate}
+Reading 1 is grammatically valid but pragmatically absurd: trees do not perform searches. A native speaker rules it out using world knowledge (trees are inanimate). A computer that does \emph{not} have such knowledge cannot rule it out without an explicit mechanism --- whether a hand-coded rule, statistical prior, or learned representation. Multiplying this difficulty across millions of sentences, in dozens of languages, is the central challenge NLP must address.
+
+\subsection{Definition and scope}
+
+\begin{definition}[Natural Language Processing]
+\textbf{Natural Language Processing} (NLP) is the subfield of artificial intelligence concerned with enabling computer systems to process, understand, and generate human language. It sits at the intersection of \emph{linguistics} (the scientific study of language), \emph{computer science} (algorithms and data structures) and \emph{machine learning} (data-driven model building).
+\end{definition}
+
+It is convenient to organise the field along three complementary axes:
+
+\begin{itemize}
+    \item \textbf{Natural Language Understanding (NLU)} --- extracting meaning, structure, sentiment, intent, or entities from text. \emph{Inputs} are texts, \emph{outputs} are typically structured representations (labels, parse trees, knowledge-graph triples).
+    \item \textbf{Natural Language Generation (NLG)} --- producing fluent and coherent natural-language outputs from structured inputs (database rows, dialogue states, summaries of long documents).
+    \item \textbf{Interaction} --- dialogue systems and conversational agents, where understanding and generation operate in a closed loop with a user.
+\end{itemize}
+
+\subsection{Why natural language is hard}
+
+Three orthogonal sources of difficulty pervade every NLP system.
+
+\subsubsection*{1. Ambiguity}
+
+A single linguistic expression can correspond to multiple meanings or structures. Ambiguity arises at every level of analysis.
+
+\begin{itemize}
+    \item \textbf{Lexical ambiguity} (polysemy or homonymy). A single word denotes several distinct concepts.
+    \begin{itemize}
+        \item \emph{bank}: financial institution \textsc{vs.} edge of a river.
+        \item \emph{date}: calendar day \textsc{vs.} romantic appointment \textsc{vs.} fruit.
+    \end{itemize}
+    \item \textbf{Syntactic ambiguity}. A single string can be parsed by several distinct grammatical structures.
+    \begin{itemize}
+        \item ``\emph{I saw the man with the telescope.}'' --- I used the telescope, or the man had a telescope?
+    \end{itemize}
+    \item \textbf{Semantic ambiguity}. A single syntactic structure admits several meanings.
+    \begin{itemize}
+        \item ``\emph{The chicken is ready to eat.}'' --- the chicken will eat, or will be eaten?
+    \end{itemize}
+    \item \textbf{Pragmatic ambiguity}. The intended communicative function is underdetermined by the literal content.
+    \begin{itemize}
+        \item ``\emph{Can you pass the salt?}'' is a polite request, not a yes/no inquiry about the listener's capabilities.
+    \end{itemize}
+\end{itemize}
+
+\subsubsection*{2. Context dependence}
+
+The meaning of an expression cannot be computed from its surface form alone --- it depends on its surrounding linguistic context and on world knowledge.
+
+\begin{itemize}
+    \item ``\emph{Apple released a new product.}'' (the company) vs.\ ``\emph{Apple is healthy.}'' (the fruit). The same string, two referents.
+    \item Pronoun resolution: ``\emph{John told Bill that he had failed the exam.}'' --- who failed? Either reading is grammatical; only context decides.
+    \item Sarcasm and irony: ``\emph{Oh great, another delay.}'' may carry the opposite of its literal meaning.
+\end{itemize}
+
+\subsubsection*{3. Variability}
+
+Many distinct surface forms encode the same meaning, and natural language permits substantial creativity.
+
+\begin{itemize}
+    \item \textbf{Synonymy and paraphrasing}: ``\emph{happy}'', ``\emph{joyful}'', ``\emph{content}'', ``\emph{elated}'' are near-synonyms with different connotations.
+    \item \textbf{Spelling and orthographic variation}: ``\emph{colour}'' / ``\emph{color}'', typos, leetspeak, abbreviations.
+    \item \textbf{Cross-domain shifts}: medical, legal, social-media, and academic text differ in vocabulary, syntax, and conventions.
+    \item \textbf{Multilingualism and code-switching}: ``\emph{J'ai}'' un meeting demain --- many speakers freely mix languages.
+\end{itemize}
+
+\begin{remark}
+These three challenges combine multiplicatively. An algorithm that handles ambiguity but not context will fail on the simplest pronoun resolution; one that handles context but not variability will not generalize from training to deployment data.
+\end{remark}
+
+\subsection{Worked examples}
+
+\textbf{Example 1 (Lexical ambiguity --- Easy).}
+Identify the polysemous word in the following sentence and give at least two distinct readings:
+\begin{quote}
+\emph{She left her glasses on the table.}
+\end{quote}
+
+\textit{Solution.} The polysemous word is \emph{glasses}, which may refer to:
+\begin{itemize}
+    \item eyewear (a pair of corrective spectacles), or
+    \item drinking vessels (e.g.\ wine glasses).
+\end{itemize}
+World knowledge --- e.g.\ that the speaker is myopic, or that the table held a meal --- is needed to disambiguate.
+
+\medskip
+
+\textbf{Example 2 (Syntactic ambiguity --- Medium).}
+Resolve the ambiguity of ``\emph{He hit the boy with the bat}'' under the following two contexts:
+
+\textit{Context A:} The previous sentence was ``\emph{He grabbed a wooden bat from the dugout.}''
+\textit{Context B:} The previous sentence was ``\emph{He met the boy with the bat at the zoo.}''
+
+\textit{Solution.}
+In context A, ``\emph{with the bat}'' attaches to the verb \emph{hit} (instrumental adjunct): the bat is the weapon.
+In context B, ``\emph{with the bat}'' attaches to the noun \emph{boy} (modifier): the boy carried a bat (the animal). Same surface form, two parse trees, two meanings; the intended one is selected only via context.
+
+\medskip
+
+\textbf{Example 3 (Pragmatics over literal content --- Hard).}
+The utterance ``\emph{It is cold in here.}'' can play several pragmatic roles. List three plausible interpretations and explain when each applies.
+
+\textit{Solution.}
+\begin{enumerate}
+    \item \textbf{Literal assertion}: a factual statement about the temperature, expecting acknowledgement.
+    \item \textbf{Indirect request}: an implicit suggestion to close a window, turn up heating, or hand the speaker a sweater (when the speaker has the social standing to make a request).
+    \item \textbf{Sarcasm}: in a room that is unmistakably warm, the same string may serve as ironic commentary on, e.g., an awkward silence.
+\end{enumerate}
+Selecting the correct reading requires modelling the speaker, the listener, the physical situation, and the broader cultural conventions of indirect speech --- topics studied under the name of \emph{pragmatics}.
+
+\subsection{Python snippet: probing word senses}
+
+The Princeton WordNet lexical database, accessible through \texttt{NLTK}, allows us to enumerate distinct senses of a polysemous word.
+
+\begin{lstlisting}
+import nltk
+nltk.download('wordnet', quiet=True)
+from nltk.corpus import wordnet as wn
+
+def show_senses(word):
+    senses = wn.synsets(word)
+    print(f"'{word}' has {len(senses)} sense(s) in WordNet:")
+    for syn in senses[:6]:
+        print(f"  - {syn.name():<20s} {syn.definition()}")
+
+show_senses("bank")
+show_senses("date")
+show_senses("light")
+\end{lstlisting}
+
+Running this snippet illustrates that even commonplace words carry many distinct senses --- the raw input to any system that aspires to ``understand'' text.
+
+\subsection{Exercises}
+\begin{enumerate}
+    \item Find three polysemous English words used in everyday speech, and list at least two distinct senses of each. For each pair of senses, propose a sentence in which only one of them is felicitous.
+    \item For the sentence \emph{``The duchess was entertaining last night,''} identify two grammatical readings and explain how the ambiguity is structured (lexical or syntactic).
+    \item Find a real-world headline (e.g.\ from the Wikipedia article on ``Crash blossom'' or from a news aggregator) that exhibits at least one form of ambiguity. Classify the ambiguity (lexical / syntactic / semantic / pragmatic) and propose a context that resolves it.
+    \item Discuss: how might \emph{world knowledge} help a system disambiguate ``\emph{I deposited the money in the bank}''? What form would such knowledge take, and where might it be obtained at scale?
+    \item (Synthesis.) Suppose you must build a customer-service chatbot for a Tunisian e-commerce site that receives messages mixing French, Arabic and English. Identify, for each of the three challenges (\emph{ambiguity}, \emph{context}, \emph{variability}), one concrete obstacle your system will face that an English-only system would not.
+\end{enumerate}
+
+\end{document}

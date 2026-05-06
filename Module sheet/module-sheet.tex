@@ -1,0 +1,296 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{geometry}
+\geometry{a4paper, hmargin=2cm, vmargin=2cm}
+\usepackage{xcolor}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{enumitem}
+\usepackage[colorlinks=true,linkcolor=blue!60!black,urlcolor=blue!60!black]{hyperref}
+
+\definecolor{header}{RGB}{30,80,160}
+\definecolor{lightblue}{RGB}{220,235,250}
+
+\renewcommand{\arraystretch}{1.4}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+
+\begin{document}
+
+% ----- HEADER -----
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{|>{\centering\arraybackslash}p{2cm}|X|}
+\hline
+\multirow{3}{=}{\centering \textbf{Logo}} & \textbf{Ministry of Higher Education and Scientific Research} \\
+& \\
+& Directorate General for University Renovation \\
+\hline
+\end{tabularx}
+\end{center}
+
+\vspace{0.5cm}
+
+\begin{center}
+\textbf{\Large Descriptive sheet of a Teaching Unit (UE) and its components (ECUE)}
+\end{center}
+
+\vspace{0.4cm}
+
+\begin{center}
+\colorbox{lightblue}{\parbox{\textwidth}{\centering \large \textbf{Module Sheet: Fundamentals of Natural Language Processing}}}
+\end{center}
+
+\vspace{0.3cm}
+
+% ----- IDENTITY -----
+\noindent
+\begin{tabularx}{\textwidth}{|L{3cm}|X|L{2cm}|L{2cm}|L{1.6cm}|X|}
+\hline
+\textbf{Teaching Unit (UE)} & Data Science Foundations & \textbf{UE Code} & \textsc{UEF210} & \textbf{ECUE} & Fundamentals of NLP \\
+\hline
+\textbf{Programme} & Mathematics & \multicolumn{2}{c|}{\textbf{Department:} Applied Mathematics} & \multicolumn{2}{c|}{\textbf{Specialization:} Data Science} \\
+\hline
+\end{tabularx}
+
+\vspace{0.2cm}
+
+% ----- LOAD -----
+\noindent
+\begin{tabularx}{\textwidth}{|L{3cm}|L{3cm}|L{1.5cm}|L{1.5cm}|X|L{1.5cm}|L{2cm}|L{1cm}|}
+\hline
+\multirow{4}{=}{\textbf{Type of teaching}} & Lectures & 24 h & \multirow{4}{=}{\textbf{Regime}} & \multicolumn{3}{c|}{Continuous Assessment (mixed)} & \\
+\cline{2-4} \cline{5-8}
+& Tutorials (TD) & 18 h & & \multicolumn{2}{c|}{Mixed} & X & \\
+\cline{2-4} \cline{5-8}
+& Practical labs (TP) & 18 h & & \multicolumn{2}{c|}{\textbf{Semester}} & \multicolumn{2}{c|}{S2} \\
+\cline{2-4} \cline{5-8}
+& Project & 0 h & & \multicolumn{2}{c|}{} & \multicolumn{2}{c|}{} \\
+\hline
+\end{tabularx}
+
+\vspace{0.2cm}
+
+\noindent
+\begin{tabularx}{\textwidth}{|L{4.5cm}|X|L{2.5cm}|L{2cm}|}
+\hline
+\multirow{2}{=}{\textbf{Total volume (per semester)}} & In-class: 60 h & \multirow{1}{=}{\textbf{Coefficient}} & 2.5 \\
+\cline{3-4}
+& Estimated personal workload: 30 h & \textbf{ECTS credits} & 5 \\
+\hline
+\end{tabularx}
+
+\vspace{0.2cm}
+
+\noindent
+\begin{tabularx}{\textwidth}{|L{4.5cm}|X|L{2cm}|X|}
+\hline
+\textbf{Module coordinator} & Aymen Ben Brik & \textbf{Lecturer} & Aymen Ben Brik \\
+\cline{1-2} \cline{3-4}
+\textbf{Target audience} & M1 GAMMA \& L2 LMAD --- Data Science & \textbf{Contributors} & --- \\
+\hline
+\end{tabularx}
+
+\vspace{0.3cm}
+
+% ----- PREREQUISITES -----
+\noindent
+\begin{tabularx}{\textwidth}{|L{4.5cm}|X|}
+\hline
+\textbf{Prerequisites} &
+\begin{itemize}[noitemsep,topsep=0pt,leftmargin=*]
+    \item Basic Python programming (functions, lists, dictionaries, file I/O).
+    \item Foundations of machine learning (supervised learning, train/test split, basic classifiers).
+    \item Linear algebra: vectors, matrices, dot products, $\ell_2$ norm, distances.
+    \item Elementary probability and statistics (distributions, conditional probability).
+\end{itemize} \\
+\hline
+\end{tabularx}
+
+\vspace{0.3cm}
+
+% ----- LEARNING OUTCOMES -----
+\noindent
+\begin{tabularx}{\textwidth}{|L{4.5cm}|X|}
+\hline
+\textbf{Intended learning outcomes (ILO)} &
+By the end of this module, the student will be able to:
+\begin{itemize}[noitemsep,topsep=0pt,leftmargin=*]
+    \item \textbf{ILO1:} Define NLP and identify its core challenges (ambiguity, context, variability).
+    \item \textbf{ILO2:} Recognize the major NLP tasks and frame real-world problems in the appropriate task category.
+    \item \textbf{ILO3:} Situate NLP within the broader AI / ML / DL landscape and identify the dominant learning paradigms.
+    \item \textbf{ILO4:} Distinguish discriminative from generative modelling and apply Bayes' rule to bridge the two.
+    \item \textbf{ILO5:} Trace the historical evolution of NLP and explain the technical motivations behind each era.
+    \item \textbf{ILO6:} Apply tokenization strategies (word, character, sub-word/BPE) appropriate to a given language and task.
+    \item \textbf{ILO7:} Build sparse (BoW, TF--IDF) and dense (Word2Vec, GloVe, FastText) text representations.
+    \item \textbf{ILO8:} Compute and interpret cosine, dot-product and Euclidean similarities for retrieval and clustering.
+    \item \textbf{ILO9:} Evaluate NLP systems with task-appropriate metrics (Precision, Recall, F$_1$, perplexity, BLEU, ROUGE) and recognise their pitfalls.
+\end{itemize} \\
+\hline
+\end{tabularx}
+
+\vspace{0.3cm}
+
+% ----- CONTENT -----
+\noindent
+\begin{tabularx}{\textwidth}{|L{4.5cm}|X|}
+\hline
+\multirow{20}{=}{\textbf{Content}} &
+\textbf{Chapter 1 --- NLP Landscape (12 h)}
+\begin{itemize}[noitemsep,topsep=0pt,leftmargin=*]
+    \item Section 1: What is NLP? Definition, scope, core challenges
+    \item Section 2: Major NLP tasks and applications (taxonomy by I/O structure)
+    \item Section 3: NLP within the AI ecosystem; supervised, unsupervised, self-supervised
+    \item Section 4: Discriminative vs.\ generative models; Bayes bridge
+    \item Section 5: Historical evolution: rules $\to$ statistics $\to$ embeddings $\to$ Transformers
+\end{itemize} \\
+& \textbf{Chapter 2 --- Text Representation and Evaluation (12 h)}
+\begin{itemize}[noitemsep,topsep=0pt,leftmargin=*]
+    \item Section 1: Tokenization fundamentals (word, character, BPE/WordPiece/SentencePiece)
+    \item Section 2: Sparse representations: Bag-of-Words, TF--IDF, document--term matrix
+    \item Section 3: Dense representations: distributional hypothesis, Word2Vec (skip-gram \& CBOW), GloVe, FastText, vector arithmetic, biases and limitations
+    \item Section 4: Semantic similarity: cosine, dot product, Euclidean; the retrieval pattern; ANN libraries
+    \item Section 5: Evaluation metrics: classification (Precision, Recall, F$_1$, ROC/PR), generation (perplexity, BLEU, ROUGE)
+\end{itemize} \\
+& \textbf{Practical labs (18 h)}
+\begin{itemize}[noitemsep,topsep=0pt,leftmargin=*]
+    \item Lab 1: Tokenization (whitespace, regex, NLTK, BPE from scratch, Hugging Face tokenizers)
+    \item Lab 2: BoW + TF--IDF text classifier on 20 Newsgroups
+    \item Lab 3: Word2Vec embeddings on Brown corpus + analogies + PCA visualization
+    \item Lab 4: Evaluation metrics (confusion matrix, ROC/PR, perplexity, BLEU, ROUGE)
+\end{itemize} \\
+\hline
+\end{tabularx}
+
+\vspace{0.3cm}
+
+% ----- TEACHING METHODS -----
+\noindent
+\begin{tabularx}{\textwidth}{|L{4.5cm}|X|}
+\hline
+\multirow{2}{=}{\textbf{Teaching and learning methods}} &
+The pedagogical framework relies on \textbf{constructive} and \textbf{active} learning, with a strong \textbf{experiential} component through practical labs.
+\\
+& In-class \quad \textbf{Mixed} (X) \quad Distance \\
+\hline
+\end{tabularx}
+
+\vspace{0.2cm}
+
+\noindent
+\begin{tabularx}{\textwidth}{|L{4.5cm}|X|}
+\hline
+\multirow{8}{=}{\textbf{Teaching techniques}} &
+\textbf{Active learning}
+\begin{itemize}[noitemsep,topsep=0pt,leftmargin=*]
+    \item Flipped classroom: short pre-class videos and notes, in-class problems and code reviews.
+    \item Live coding sessions in Jupyter notebooks (NLTK, scikit-learn, gensim, Hugging Face).
+    \item Pair programming during lab sessions; collaborative debugging of NLP pipelines.
+\end{itemize} \\
+& \textbf{Constructive learning}
+\begin{itemize}[noitemsep,topsep=0pt,leftmargin=*]
+    \item Examples and counter-examples for ambiguity, polysemy, embedding analogies.
+    \item Progressive construction of artefacts: BPE algorithm, classifier, retrieval index.
+    \item Guided $\to$ autonomous: scaffolding is reduced over the semester.
+\end{itemize} \\
+& \textbf{Experiential learning}
+\begin{itemize}[noitemsep,topsep=0pt,leftmargin=*]
+    \item Hands-on manipulation of real datasets (20 Newsgroups, Brown corpus, code-switched text).
+    \item Empirical comparison of model families on the same task.
+    \item Failure analysis: tokenizer mismatches on dialectal Arabic, class-imbalance pitfall.
+\end{itemize} \\
+& \textbf{Reflective learning}
+\begin{itemize}[noitemsep,topsep=0pt,leftmargin=*]
+    \item Self-assessment grids on code quality, scientific clarity, and reproducibility.
+    \item Peer review of lab notebooks.
+    \item Written justification of design choices (which tokenizer, which similarity, which metric).
+\end{itemize} \\
+\hline
+\end{tabularx}
+
+\vspace{0.3cm}
+
+% ----- ASSESSMENT -----
+\noindent
+\begin{tabularx}{\textwidth}{|L{4.5cm}|X|}
+\hline
+\multirow{2}{=}{\textbf{Assessment methods}} &
+Assessment combines formative (feedback-driven) and summative (graded) components, aligned with the intended learning outcomes.
+\\ &
+\\
+\hline
+\end{tabularx}
+
+\noindent
+\begin{tabularx}{\textwidth}{|L{2.5cm}|L{4.5cm}|L{3cm}|X|}
+\hline
+\textbf{Assessment} & \textbf{Associated activity} & \textbf{ILOs assessed} & \textbf{Type} \\
+\hline
+Diagnostic & Quiz on Python, basic ML, linear algebra & ILO1, ILO3 & Ungraded \\
+\hline
+Formative 1 & Tokenization exercises and short BPE walkthrough & ILO1, ILO6 & Feedback \\
+\hline
+Formative 2 & Building a TF--IDF text classifier and inspecting features & ILO2, ILO7, ILO9 & Constructive \\
+\hline
+Formative 3 & Training Word2Vec; nearest neighbours and analogy tests & ILO5, ILO7 & Experiential \\
+\hline
+Continuous Assessment (CC) & Mini-project: end-to-end NLP pipeline (tokenize $\to$ embed $\to$ classify $\to$ evaluate) on a chosen dataset & ILO1 $\to$ ILO9 & Summative \\
+\hline
+Final exam & Written exam: theory questions, short calculations (TF--IDF, cosine, F$_1$, BLEU), failure-mode analysis & ILO1 $\to$ ILO9 & Summative \\
+\hline
+\end{tabularx}
+
+\vspace{0.3cm}
+
+% ----- BIBLIOGRAPHY -----
+\noindent
+\begin{tabularx}{\textwidth}{|L{4.5cm}|X|}
+\hline
+\multirow{6}{=}{\textbf{Bibliography \& resources}} &
+\textbf{Reference textbooks}
+\begin{itemize}[noitemsep,topsep=0pt,leftmargin=*]
+    \item Jurafsky, D., \& Martin, J.\,H. \emph{Speech and Language Processing} (3rd ed., draft).
+    \item Eisenstein, J. \emph{Introduction to Natural Language Processing}, MIT Press, 2019.
+    \item Manning, C.\,D., Raghavan, P., \& Sch\"utze, H. \emph{Introduction to Information Retrieval}, Cambridge UP, 2008.
+\end{itemize} \\
+& \textbf{Foundational papers}
+\begin{itemize}[noitemsep,topsep=0pt,leftmargin=*]
+    \item Mikolov et al.\ (2013), \emph{Efficient estimation of word representations in vector space} (Word2Vec).
+    \item Pennington, Socher, \& Manning (2014), \emph{GloVe}.
+    \item Bojanowski et al.\ (2017), \emph{Enriching word vectors with subword information} (FastText).
+    \item Vaswani et al.\ (2017), \emph{Attention is all you need}.
+    \item Devlin et al.\ (2018), \emph{BERT}.
+\end{itemize} \\
+& \textbf{Tools and tutorials}
+\begin{itemize}[noitemsep,topsep=0pt,leftmargin=*]
+    \item NLTK: \url{https://www.nltk.org/}
+    \item scikit-learn: \url{https://scikit-learn.org/}
+    \item gensim Word2Vec tutorial: \url{https://radimrehurek.com/gensim/}
+    \item Hugging Face: \url{https://huggingface.co/}
+\end{itemize} \\
+& \textbf{Datasets used}
+\begin{itemize}[noitemsep,topsep=0pt,leftmargin=*]
+    \item 20 Newsgroups (sklearn built-in)
+    \item Brown corpus (NLTK)
+    \item Sample Tunisian dialect snippets (provided in lab notebooks)
+\end{itemize} \\
+\hline
+\end{tabularx}
+
+\vspace{0.3cm}
+
+% ----- COURSE LINK -----
+\noindent
+\begin{tabularx}{\textwidth}{|L{4.5cm}|X|}
+\hline
+\textbf{Course repository} & \url{https://github.com/Aymenbenbrik/FundamentalsNLP} \\
+\hline
+\textbf{Document version} & v1.0 --- compiled \today \\
+\hline
+\end{tabularx}
+
+\end{document}

@@ -6,11 +6,14 @@ Course material for **Fundamentals of NLP**, designed for:
 
 This course introduces classical Natural Language Processing techniques that build the foundation for modern deep learning approaches. It assumes basic Python programming, machine learning concepts and linear algebra.
 
-## 📘 Complete course (PDF)
+## 📘 Course materials
 
-➡️ **[Download the unified course — 59 pages](Full-course/FundamentalsNLP-Complete.pdf)**
-
-A single PDF combining both chapters with a global title page, foreword, navigable table of contents (with hyperlinks), continuous numbering, formal definitions, worked examples and integrated Python code.
+| Resource | Pages | Link |
+|---|---|---|
+| 📖 **Complete course (unified PDF)** | 59 | [`Full-course/FundamentalsNLP-Complete.pdf`](Full-course/FundamentalsNLP-Complete.pdf) |
+| 🎤 **Beamer slides** | 39 | [`Slides/slides.pdf`](Slides/slides.pdf) |
+| 📋 **Module sheet (ECUE)** | 6 | [`Module sheet/module-sheet.pdf`](Module%20sheet/module-sheet.pdf) |
+| 💻 **Lab notebooks (4)** | --- | [`Notebooks/`](Notebooks/) |
 
 ## Learning objectives
 
@@ -31,9 +34,10 @@ By the end of this course, students will be able to:
 ├── Chapters/
 │   ├── Chapter 1 - NLP Landscape/
 │   └── Chapter 2 - Text Representation and Evaluation/
-├── Notebooks/      (4 Python lab notebooks)
-├── Slides/         (optional Beamer slides — to be added)
-└── Full-course/    (unified PDF and master LaTeX file)
+├── Notebooks/       (4 Python lab notebooks)
+├── Slides/          (Beamer slides for in-class delivery)
+├── Module sheet/    (ECUE descriptive sheet)
+└── Full-course/     (unified PDF and master LaTeX file)
 ```
 
 ## Syllabus

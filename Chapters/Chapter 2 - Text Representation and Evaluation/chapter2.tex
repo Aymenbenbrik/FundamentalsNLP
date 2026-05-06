@@ -412,4 +412,170 @@ for term, score in zip(tfidf.get_feature_names_out(), tfidf.idf_):
     \item (Open-ended.) Suppose you must build a search engine over a corpus of $100{,}000$ Tunisian-Arabic news articles. Discuss whether you would prefer a TF--IDF index, a dense-vector index (Section~\ref{sec:dense}), or a hybrid of the two. Identify a concrete query that one method handles but not the other.
 \end{enumerate}
 
+\section{Dense representations: Word2Vec, GloVe, FastText}
+\label{sec:dense}
+
+\subsection{Motivation}
+Sparse Bag-of-Words and TF--IDF representations encode lexical presence but not \emph{meaning}. To a sparse model, the vectors of \emph{cat} and \emph{kitten} are orthogonal --- as unrelated as \emph{cat} and \emph{democracy}. This severely limits generalisation: a classifier trained on documents containing \emph{cat} cannot directly transfer its decision to documents containing \emph{kitten}, even though the two words mean almost the same thing. \emph{Dense word embeddings} solve this problem by mapping every word to a low-dimensional real-valued vector such that semantically similar words receive similar vectors. The idea, in a single line: \emph{a word's meaning is determined by the company it keeps}.
+
+\subsection{Approach by problem: where does meaning live?}
+\textbf{Problem.} Given a corpus of one billion English sentences, how could you produce, without any human annotation, a 300-dimensional vector for each English word such that synonyms end up close together?
+
+\textbf{Solution sketch.} Read the corpus and count, for every pair of words $(w, c)$, how often they co-occur within a small context window. Words that share many contexts (\emph{cat / kitten} both appear near \emph{purr, fur, meow, pet}) will have similar count profiles. Reduce these high-dimensional count vectors to a low-dimensional latent space (e.g.\ via matrix factorization), and similar words will project to nearby points. The full algorithm refines this idea, but the core insight is captured by a single principle from mid-20th-century linguistics.
+
+\subsection{The distributional hypothesis}
+
+\begin{definition}[Distributional hypothesis, Harris 1954, Firth 1957]
+The semantic similarity of two words is well approximated by the similarity of their typical \emph{contexts}. Formally, if $C(w)$ denotes the multiset of words appearing within a fixed-size window of $w$ across a corpus, then
+\[ \mathrm{sim}_{\text{semantic}}(w_1, w_2) \approx \mathrm{sim}_{\text{distributional}}(C(w_1), C(w_2)). \]
+\end{definition}
+
+This empirical hypothesis has held up remarkably well: every modern word-embedding algorithm is, at root, a way to operationalise it.
+
+\subsection{Word2Vec}
+
+Mikolov et al.\ (2013) introduced two shallow neural architectures that learn dense word vectors from raw text. Each word $w$ is associated with two vectors: a \emph{centre vector} $\mathbf{v}_w \in \mathbb{R}^d$ and a \emph{context vector} $\mathbf{u}_w \in \mathbb{R}^d$, both stored in lookup tables and updated by gradient descent.
+
+\paragraph{Skip-gram.} Given a centre word, predict the surrounding context words. Formally, for a corpus tokenized as $w_1, w_2, \dots, w_T$ and a context window of size $m$,
+\[ \mathcal{L}_{\text{skip-gram}} = -\frac{1}{T}\sum_{t=1}^{T}\sum_{\substack{-m \le j \le m \\ j \neq 0}} \log P(w_{t+j} \mid w_t), \]
+with the conditional modelled as a softmax:
+\[ P(c \mid w) = \frac{\exp(\mathbf{u}_c^\top \mathbf{v}_w)}{\sum_{c' \in V} \exp(\mathbf{u}_{c'}^\top \mathbf{v}_w)}. \]
+
+\paragraph{CBOW (Continuous Bag-of-Words).} Symmetric: predict the centre word from the average of context vectors. Faster to train but slightly less accurate on rare words.
+
+\paragraph{Negative sampling.} Computing the softmax over the entire vocabulary is too expensive when $|V| \sim 10^6$. The trick is to replace it with a binary classification: for each true context pair $(w, c)$, draw $k$ ``noise'' words $\tilde{c}_1, \dots, \tilde{c}_k$ from a unigram distribution and minimise
+\[ -\log \sigma(\mathbf{u}_c^\top \mathbf{v}_w) - \sum_{i=1}^{k} \log \sigma(-\mathbf{u}_{\tilde{c}_i}^\top \mathbf{v}_w). \]
+This is a discriminative surrogate for the original generative loss; empirically, $k = 5$--$15$ is sufficient for high-quality embeddings.
+
+\subsection{GloVe}
+
+Pennington et al.\ (2014) take a complementary route: factor the global word--context co-occurrence matrix instead of training on local windows.
+
+\paragraph{Setup.} Let $X \in \mathbb{R}^{|V| \times |V|}$ be the matrix whose entry $X_{ij}$ counts how often word $j$ appears in the context of word $i$. The aim is to find vectors $\mathbf{v}_i, \mathbf{u}_j \in \mathbb{R}^d$ and biases $b_i, c_j$ such that
+\[ \mathbf{v}_i^\top \mathbf{u}_j + b_i + c_j \approx \log X_{ij}. \]
+The factorization minimises a weighted least-squares objective:
+\[ \mathcal{L}_{\text{GloVe}} = \sum_{i, j} f(X_{ij}) \big( \mathbf{v}_i^\top \mathbf{u}_j + b_i + c_j - \log X_{ij} \big)^2, \]
+where $f$ is a weighting function that down-weights very rare and very frequent co-occurrences.
+
+\paragraph{Skip-gram and GloVe are dual.} Levy and Goldberg (2014) showed that skip-gram with negative sampling implicitly factors a shifted pointwise mutual information matrix,
+\[ \mathbf{v}_w^\top \mathbf{u}_c \approx \log \frac{P(w, c)}{P(w) P(c)} - \log k, \]
+where $k$ is the number of negative samples. The two algorithms thus solve closely related optimisation problems with different objectives and weightings; they typically yield comparable embedding quality.
+
+\subsection{FastText}
+
+Bojanowski et al.\ (2017) extend Word2Vec by embedding \emph{sub-word units} rather than entire words. A word is represented as the sum of vectors of its character $n$-grams (with $n = 3, 4, 5, 6$):
+\[ \mathbf{v}_{\text{word}} = \sum_{g \in \mathcal{G}_{\text{word}}} \mathbf{v}_g. \]
+Two consequences:
+\begin{itemize}
+    \item \textbf{No more OOV.} Any unseen word can be embedded as a sum of its $n$-gram vectors --- including misspellings, neologisms, and morphological variants.
+    \item \textbf{Better for morphologically rich languages.} The vectors of \emph{run, runs, running} share most of their $n$-grams, so the model captures morphological similarity automatically. This is especially valuable for Arabic, Turkish, Finnish, and dialectal varieties.
+\end{itemize}
+
+\subsection{Vector arithmetic and the analogy task}
+
+A striking empirical property of dense embeddings is that they encode semantic relations \emph{linearly}.
+
+\begin{property}[Word analogies]
+For high-quality embeddings, relational analogies of the form
+\begin{quote}
+\emph{$A$ is to $B$ as $C$ is to $D$}
+\end{quote}
+are often captured by
+\[ \mathbf{v}_B - \mathbf{v}_A + \mathbf{v}_C \approx \mathbf{v}_D, \]
+in the sense that the nearest neighbour of $\mathbf{v}_B - \mathbf{v}_A + \mathbf{v}_C$ in the embedding space (excluding $A, B, C$ themselves) is $D$.
+\end{property}
+
+\paragraph{Examples.}
+\begin{itemize}
+    \item Gender: $\overrightarrow{\text{king}} - \overrightarrow{\text{man}} + \overrightarrow{\text{woman}} \approx \overrightarrow{\text{queen}}$.
+    \item Country--capital: $\overrightarrow{\text{Tunis}} - \overrightarrow{\text{Tunisia}} + \overrightarrow{\text{France}} \approx \overrightarrow{\text{Paris}}$.
+    \item Verb tense: $\overrightarrow{\text{walked}} - \overrightarrow{\text{walking}} + \overrightarrow{\text{running}} \approx \overrightarrow{\text{ran}}$.
+\end{itemize}
+
+The analogy task became the dominant intrinsic-evaluation benchmark for word embeddings throughout the mid-2010s.
+
+\subsection{Limitations: static, monolingual, biased}
+
+\begin{itemize}
+    \item \textbf{Static.} Each word receives one vector regardless of context. The polysemous word \emph{bank} has a single embedding that mixes its financial and riverside senses --- useful as an average, useless for disambiguation. Section~\ref{sec:contextual-preview} previews the contextual fix.
+    \item \textbf{Monolingual.} Word2Vec / GloVe / FastText vectors are trained on a single language. Cross-lingual alignment requires extra mechanisms.
+    \item \textbf{Biases inherited from the training corpus.} The data is the model. If the corpus encodes social biases, the embeddings inherit them: $\overrightarrow{\text{nurse}}$ may end up closer to $\overrightarrow{\text{woman}}$ than to $\overrightarrow{\text{man}}$, with measurable downstream consequences. A growing body of literature studies and mitigates these effects.
+\end{itemize}
+
+\subsection{Toward contextual embeddings}
+\label{sec:contextual-preview}
+
+Static embeddings give one vector per word type. Modern Transformer encoders (BERT, RoBERTa, $\dots$) instead produce one vector per word \emph{token in context}: the same word \emph{bank} receives different vectors when it appears in ``\emph{the bank approved my loan}'' and in ``\emph{we sat on the bank of the river}''. Contextualisation is the topic of Part~2 of this course; for now, treat static embeddings as the entry point and the conceptual ancestor.
+
+\subsection{Worked examples}
+
+\textbf{Example 1 (Distributional similarity --- Easy).}
+In a small corpus, the words \emph{cat} and \emph{dog} both frequently co-occur with \emph{pet}, \emph{food}, \emph{bowl}, while \emph{democracy} co-occurs with \emph{election}, \emph{vote}, \emph{government}. Justify intuitively why a word-embedding algorithm will place $\overrightarrow{\text{cat}}$ closer to $\overrightarrow{\text{dog}}$ than to $\overrightarrow{\text{democracy}}$.
+
+\textit{Solution.} The distributional hypothesis predicts that words with similar context distributions are placed close in embedding space. The algorithms operationalise this by training each word's vector to be predictive of (or compatible with) its observed contexts. Since \emph{cat} and \emph{dog} have similar context distributions, their vectors will be similar; \emph{democracy}'s contexts are nearly disjoint, so its vector will be far from both.
+
+\medskip
+
+\textbf{Example 2 (Skip-gram softmax explicit --- Medium).}
+A toy vocabulary contains only $\{$\emph{cat}, \emph{dog}, \emph{the}$\}$, with embeddings $\mathbf{v}_{\text{cat}} = (1, 0)$, $\mathbf{v}_{\text{dog}} = (0.9, 0.1)$, $\mathbf{v}_{\text{the}} = (0, 1)$ and context vectors $\mathbf{u}_w = \mathbf{v}_w$ for simplicity. Compute $P(\emph{dog} \mid \emph{cat})$ under the skip-gram softmax.
+
+\textit{Solution.}
+The dot products are $\mathbf{u}_{\text{cat}}^\top \mathbf{v}_{\text{cat}} = 1$, $\mathbf{u}_{\text{dog}}^\top \mathbf{v}_{\text{cat}} = 0.9$, $\mathbf{u}_{\text{the}}^\top \mathbf{v}_{\text{cat}} = 0$.
+\[ P(\emph{dog} \mid \emph{cat}) = \frac{e^{0.9}}{e^{1} + e^{0.9} + e^{0}} = \frac{2.46}{2.72 + 2.46 + 1} \approx \frac{2.46}{6.18} \approx 0.398. \]
+The model assigns $\sim 40\%$ of its conditional mass to \emph{dog} (close to but slightly less than \emph{cat} itself, which would self-predict with $\sim 44\%$).
+
+\medskip
+
+\textbf{Example 3 (FastText for Tunisian Arabic --- Hard).}
+The Tunisian-Arabic verb \emph{n7eb} (``I love'') is unlikely to appear in a generic Arabic corpus, but its sub-word components (\emph{n}, \emph{7}, \emph{he}, \emph{eb}, $\dots$) appear frequently in dialectal text. Argue why FastText would handle this word more robustly than Word2Vec, and write the formula for its vector.
+
+\textit{Solution.} Word2Vec treats \emph{n7eb} as a single, unseen token: at inference, the lookup is undefined and the model falls back to a default \texttt{[UNK]} vector. FastText instead computes
+\[ \mathbf{v}_{\emph{n7eb}} = \sum_{g \in \mathcal{G}(\emph{n7eb})} \mathbf{v}_g, \]
+where $\mathcal{G}(\emph{n7eb})$ is the set of character $n$-grams of \emph{n7eb} (with sentinels): for $n = 3$, $\mathcal{G} = \{\texttt{<n7}, \texttt{n7e}, \texttt{7eb}, \texttt{eb>}, \dots\}$. Each $n$-gram has been seen and embedded during training; their sum is a valid embedding even though the whole word is novel. The resulting vector encodes morphological and orthographic similarity to other dialectal verb forms, making downstream tasks (sentiment, NER) significantly more robust.
+
+\subsection{Python snippet: train and explore Word2Vec}
+
+\begin{lstlisting}
+# pip install gensim
+from gensim.models import Word2Vec
+
+corpus = [
+    "the cat sat on the mat".split(),
+    "a kitten sleeps on the couch".split(),
+    "dogs and cats are common pets".split(),
+    "Tunisia is a country in north africa".split(),
+    "Tunis is the capital of Tunisia".split(),
+    "Paris is the capital of France".split(),
+]
+
+model = Word2Vec(
+    sentences=corpus, vector_size=50, window=2,
+    min_count=1, sg=1, negative=5, epochs=200,
+)
+
+print("vec(cat) =", model.wv["cat"][:5], "...")
+print("Most similar to 'cat':")
+for w, s in model.wv.most_similar("cat", topn=3):
+    print(f"  {w:<12s} cos-sim = {s:.3f}")
+
+# Analogy: Tunis - Tunisia + France ~= Paris
+analogy = model.wv.most_similar(
+    positive=["France", "Tunis"], negative=["Tunisia"], topn=3,
+)
+print("\nTunis is to Tunisia as ? is to France:")
+for w, s in analogy:
+    print(f"  {w:<12s} cos-sim = {s:.3f}")
+\end{lstlisting}
+
+The toy corpus is too small to deliver high-quality vectors, but the API is identical to a corpus of billions of tokens.
+
+\subsection{Exercises}
+\begin{enumerate}
+    \item Restate the distributional hypothesis in your own words and explain why it is an \emph{empirical} (rather than mathematical) claim. Give one sentence for which the hypothesis arguably fails.
+    \item Skip-gram and CBOW are dual training objectives. For each, argue qualitatively whether you expect better embeddings on rare or on frequent words, and why.
+    \item Show that for a uniform vocabulary distribution, the $\log P(w, c)/P(w)P(c)$ in Levy--Goldberg's analysis simplifies to $\log P(c \mid w) + \log |V|$. Comment on the consequence for the implicit objective of skip-gram.
+    \item Construct three analogy tests of your own --- one geographic, one syntactic, and one social --- and predict whether you expect a generic Word2Vec model trained on Wikipedia to solve them.
+    \item (Synthesis.) Discuss why FastText is a natural choice for a sentiment classifier on Tunisian-Arabic Twitter data, while Word2Vec is more suitable for a clean English Wikipedia corpus. Identify two distinct linguistic features of dialectal Arabic that drive this preference.
+\end{enumerate}
+
 \end{document}

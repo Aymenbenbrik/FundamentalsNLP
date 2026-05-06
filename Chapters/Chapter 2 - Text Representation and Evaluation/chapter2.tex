@@ -765,4 +765,253 @@ For a million-document index, replace these dense methods by an approximate-near
     \item (Synthesis.) Sketch a Tunisian-news semantic search engine: which embedding model would you use, what similarity measure, what indexing approach (exact vs approximate), and how would you evaluate retrieval quality? Identify two failure cases that purely lexical (TF--IDF) search would miss but a dense, multilingual model would handle.
 \end{enumerate}
 
+\section{Evaluation metrics}
+\label{sec:eval}
+
+\subsection{Motivation}
+``\emph{What is not measured cannot be improved.}'' An NLP system without principled evaluation is an NLP system without progress. Different tasks demand different metrics: a classifier is judged on whether it returns the correct label, a translation system on how closely its output matches a reference, a language model on how well it predicts unseen text. This section formalises the metrics most often quoted in the literature: \textbf{Accuracy, Precision, Recall, $F_1$} for classification (Section~\ref{sec:eval-classification}), and \textbf{Perplexity, BLEU, ROUGE} for generation (Section~\ref{sec:eval-generation}). We pay equal attention to their pitfalls --- a single number is never the whole story.
+
+\subsection{Approach by problem: the misleading 95\% accuracy}
+\textbf{Problem.} You build a classifier that detects whether a tweet contains hate speech. Hate-speech tweets account for $5\%$ of your corpus. A trivial baseline that always predicts \emph{not hate speech} achieves $95\%$ accuracy. Is this baseline useful? What metric reveals its uselessness?
+
+\textbf{Solution sketch.} The baseline misses every actual case of hate speech --- its \emph{recall on the positive class} is $0$. Accuracy is misleading whenever classes are imbalanced: it is dominated by the easy majority class. Reporting \emph{precision and recall on the positive class}, or the $F_1$ score, makes the baseline's failure visible immediately. This single example motivates everything that follows.
+
+\subsection{Classification metrics}
+\label{sec:eval-classification}
+
+\subsubsection*{The confusion matrix}
+
+\begin{definition}[Confusion matrix, binary case]
+For a binary classifier with output $\hat{y} \in \{0, 1\}$ and ground-truth label $y \in \{0, 1\}$, define four counts on a test set of size $N$:
+\begin{center}
+\begin{tabular}{|c|cc|}
+\hline
+& Predicted positive & Predicted negative \\
+\hline
+Actual positive & $\mathrm{TP}$ (true positive) & $\mathrm{FN}$ (false negative) \\
+Actual negative & $\mathrm{FP}$ (false positive) & $\mathrm{TN}$ (true negative) \\
+\hline
+\end{tabular}
+\end{center}
+By construction, $\mathrm{TP} + \mathrm{FP} + \mathrm{FN} + \mathrm{TN} = N$.
+\end{definition}
+
+\subsubsection*{Accuracy}
+
+\begin{definition}[Accuracy]
+\[ \mathrm{Accuracy} = \frac{\mathrm{TP} + \mathrm{TN}}{\mathrm{TP} + \mathrm{TN} + \mathrm{FP} + \mathrm{FN}}. \]
+The fraction of predictions that match the ground truth.
+\end{definition}
+
+Accuracy is intuitive but misleading under class imbalance. Use it only when the class distribution is roughly balanced and the costs of false positives and false negatives are comparable.
+
+\subsubsection*{Precision and Recall}
+
+\begin{definition}[Precision and Recall]
+\[ \mathrm{Precision} = \frac{\mathrm{TP}}{\mathrm{TP} + \mathrm{FP}}, \qquad \mathrm{Recall} = \frac{\mathrm{TP}}{\mathrm{TP} + \mathrm{FN}}. \]
+\end{definition}
+
+\paragraph{Library analogy.} Imagine searching a library for books on machine learning.
+\begin{itemize}
+    \item \textbf{Precision}: of the books you brought home, how many are about ML?
+    \item \textbf{Recall}: of all ML books in the library, how many did you bring home?
+\end{itemize}
+A search that returns only the most obvious ML book has high precision but low recall. A search that returns every book in the library has perfect recall but very low precision.
+
+\paragraph{When to optimise which.}
+\begin{itemize}
+    \item \textbf{Precision-critical}: spam detection (a false positive blocks a legitimate email --- much worse than letting one spam through).
+    \item \textbf{Recall-critical}: medical screening (missing a tumour is far worse than a false alarm --- patients can be re-tested).
+    \item \textbf{Balanced}: most generic NLP tasks (NER, sentiment, topic classification).
+\end{itemize}
+
+\subsubsection*{F-measure}
+
+\begin{definition}[$F_1$ score]
+The $F_1$ score is the harmonic mean of Precision and Recall:
+\[ F_1 = \frac{2 \cdot \mathrm{Precision} \cdot \mathrm{Recall}}{\mathrm{Precision} + \mathrm{Recall}}. \]
+\end{definition}
+
+The harmonic mean penalises imbalance more harshly than the arithmetic mean: $F_1$ is high only when \emph{both} Precision and Recall are high.
+
+\begin{property}[Bounds of $F_1$]
+$0 \le F_1 \le 1$. $F_1 = 1$ iff $\mathrm{Precision} = \mathrm{Recall} = 1$. If either is zero, $F_1 = 0$.
+\end{property}
+
+\begin{remark}[$F_\beta$ generalisation]
+The general $F_\beta$ score weights recall $\beta$ times more than precision:
+\[ F_\beta = (1 + \beta^2) \cdot \frac{\mathrm{Precision} \cdot \mathrm{Recall}}{\beta^2 \cdot \mathrm{Precision} + \mathrm{Recall}}. \]
+$F_2$ favours recall (medical), $F_{0.5}$ favours precision (anti-spam).
+\end{remark}
+
+\subsubsection*{Multi-class extensions}
+
+For $K$-class problems, compute Precision/Recall/$F_1$ per class, then aggregate:
+\begin{itemize}
+    \item \textbf{Macro-average}: simple average of the $K$ per-class metrics. Treats all classes equally.
+    \item \textbf{Micro-average}: pool all decisions across classes, then compute the metric. Dominated by frequent classes.
+    \item \textbf{Weighted average}: weight each class by its prevalence.
+\end{itemize}
+
+\subsection{Generation metrics}
+\label{sec:eval-generation}
+
+\subsubsection*{Perplexity}
+
+Generation models do not produce a discrete label; they produce a probability distribution over the next token. \emph{Perplexity} measures how well the model predicts a held-out test sequence.
+
+\begin{definition}[Perplexity]
+For a language model $P_\theta$ and a sequence $w_1, \dots, w_N$ from a held-out set, the perplexity is
+\[ \mathrm{PPL}(P_\theta) = 2^{-\frac{1}{N} \sum_{i=1}^{N} \log_2 P_\theta(w_i \mid w_1, \dots, w_{i-1})} = \exp\Big(- \frac{1}{N} \sum_{i=1}^{N} \log P_\theta(w_i \mid w_1, \dots, w_{i-1})\Big). \]
+\end{definition}
+
+\paragraph{Intuition.} If perplexity is $k$, the model is on average ``hesitating between $k$ equally likely words'' at each position. Lower is better; perplexity of $1$ means perfect prediction.
+
+\begin{property}[Lower bound]
+$\mathrm{PPL}(P_\theta) \ge 1$, with equality iff $P_\theta$ assigns probability $1$ to every observed token.
+\end{property}
+
+\begin{remark}[A caveat]
+Low perplexity does not guarantee high-quality output. A model can have low perplexity on test text yet produce repetitive or incoherent generation. Perplexity is therefore a useful but partial proxy.
+\end{remark}
+
+\subsubsection*{BLEU (translation)}
+
+\begin{definition}[BLEU score, simplified]
+The Bilingual Evaluation Understudy score (Papineni et al., 2002) compares a candidate translation $c$ to one or several reference translations $\{r_1, \dots, r_M\}$. It combines a \emph{modified $n$-gram precision} $p_n$ for $n = 1, \dots, N$ (typically $N = 4$) and a \emph{brevity penalty} $\mathrm{BP}$:
+\[ \mathrm{BLEU} = \mathrm{BP} \cdot \exp\!\left( \sum_{n=1}^{N} \frac{1}{N} \log p_n \right), \]
+where
+\[ \mathrm{BP} = \begin{cases} 1 & \text{if } |c| > |r| \\ \exp(1 - |r| / |c|) & \text{otherwise} \end{cases} \]
+penalises candidates shorter than the reference.
+\end{definition}
+
+\paragraph{Modified $n$-gram precision.} For each $n$-gram in the candidate, count its occurrences in the candidate (call it $\mathrm{count}_c$) and clip it by the maximum occurrences across the references. Sum the clipped counts and divide by the total candidate $n$-grams.
+
+\paragraph{Range.} $0 \le \mathrm{BLEU} \le 1$ (often reported as a percentage). Modern strong systems on news translation reach $30$--$50$ BLEU; human translation typically scores in the same range, illustrating that BLEU is a useful but imperfect proxy for human judgement.
+
+\subsubsection*{ROUGE (summarization)}
+
+\begin{definition}[ROUGE-N, simplified]
+For a candidate summary $c$ and a reference $r$,
+\[ \mathrm{ROUGE\text{-}N} = \frac{|\,n\text{-grams}_c \cap n\text{-grams}_r\,|}{|\,n\text{-grams}_r\,|} = \mathrm{Recall}_n. \]
+ROUGE-$1$ uses unigrams; ROUGE-$2$ uses bigrams.
+\end{definition}
+
+\begin{definition}[ROUGE-L]
+ROUGE-L uses the length of the longest common subsequence (LCS) between $c$ and $r$:
+\[ \mathrm{ROUGE\text{-}L} = \frac{\mathrm{LCS}(c, r)}{\max(|c|, |r|)}. \]
+\end{definition}
+
+\paragraph{BLEU vs ROUGE.} BLEU is precision-oriented (``what fraction of the candidate is correct?''); ROUGE is recall-oriented (``what fraction of the reference is captured?''). For \emph{translation} we typically want both, but with a strong precision bias --- hence BLEU. For \emph{summarisation} we want to avoid missing important content, so recall is paramount --- hence ROUGE.
+
+\subsection{Summary table}
+
+\begin{center}
+\begin{tabular}{|l|l|l|l|}
+\hline
+\textbf{Metric} & \textbf{Task} & \textbf{Captures} & \textbf{Range} \\
+\hline
+Accuracy & Classification & Overall correctness & $[0, 1]$ \\
+Precision & Classification & Quality of positive predictions & $[0, 1]$ \\
+Recall & Classification & Coverage of positive cases & $[0, 1]$ \\
+$F_1$ & Classification & Harmonic balance of P and R & $[0, 1]$ \\
+Perplexity & Language modelling & Predictive quality (geometric mean) & $[1, \infty)$ \\
+BLEU & Translation & $n$-gram precision with brevity penalty & $[0, 1]$ \\
+ROUGE-N & Summarisation & $n$-gram recall vs reference & $[0, 1]$ \\
+ROUGE-L & Summarisation & Longest common subsequence recall & $[0, 1]$ \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{remark}[Modern complementary metrics]
+Each of the above is purely surface-form: it counts $n$-gram or token matches and ignores meaning. Modern alternatives such as \emph{BERTScore} (semantic similarity via contextual embeddings), \emph{LLM-as-a-judge} (a strong language model rates the candidate), \emph{RAGAS} (evaluation suite for retrieval-augmented generation) and \emph{MT-Bench} (multi-turn instruction-following) attempt to measure semantic and pragmatic adequacy. We encounter them in later parts of the course.
+\end{remark}
+
+\subsection{Worked examples}
+
+\textbf{Example 1 (Confusion matrix --- Easy).}
+A spam detector tested on $1000$ emails ($300$ spam, $700$ legitimate) produces $250$ true positives, $50$ false negatives, $40$ false positives, $660$ true negatives. Compute Accuracy, Precision, Recall, and $F_1$ for the spam class.
+
+\textit{Solution.}
+\begin{align*}
+\mathrm{Accuracy} &= (250 + 660) / 1000 = 0.91, \\
+\mathrm{Precision} &= 250 / (250 + 40) \approx 0.862, \\
+\mathrm{Recall} &= 250 / (250 + 50) \approx 0.833, \\
+F_1 &= \frac{2 \cdot 0.862 \cdot 0.833}{0.862 + 0.833} \approx 0.847.
+\end{align*}
+
+\medskip
+
+\textbf{Example 2 (Imbalanced classes --- Medium).}
+On a corpus where $99\%$ of tweets are non-toxic, a classifier predicts \emph{non-toxic} for every input. Compute its accuracy, precision, recall, and $F_1$ on the toxic class.
+
+\textit{Solution.} TP $= 0$, FN $= 1\%$ of corpus, FP $= 0$, TN $= 99\%$ of corpus.
+$\mathrm{Accuracy} = 0.99$. $\mathrm{Precision} = 0/0$ (undefined; conventionally $0$). $\mathrm{Recall} = 0/1\% = 0$. $F_1 = 0$.
+The accuracy of $99\%$ celebrates a model that detects no toxicity at all. $F_1$ correctly reveals it as useless on the task we care about. \emph{Always inspect class-conditional metrics under imbalance.}
+
+\medskip
+
+\textbf{Example 3 (BLEU vs ROUGE on summary --- Hard).}
+Reference: ``\emph{Tunisia won the African Cup of Nations.}'' (8 tokens)
+Candidate: ``\emph{Tunisia won the cup.}'' (4 tokens)
+
+(a) Compute the unigram precision of the candidate (BLEU-1, no brevity penalty for now).
+(b) Compute ROUGE-1.
+(c) Compute the brevity penalty and the full BLEU-1.
+
+\textit{Solution.}
+(a) Candidate unigrams: $\{$Tunisia, won, the, cup$\}$. All four appear in the reference. Modified precision $= 4/4 = 1.0$.
+
+(b) ROUGE-1 unigram recall: reference unigrams (after lowercasing) $\{$tunisia, won, the, african, cup, of, nations$\}$, $7$ distinct. Candidate covers $\{$tunisia, won, the, cup$\}$, $4$ tokens. ROUGE-1 $= 4/7 \approx 0.571$.
+
+(c) Brevity penalty: $|c| = 4 < |r| = 8$, so $\mathrm{BP} = \exp(1 - 8/4) = \exp(-1) \approx 0.368$. BLEU-1 $= 0.368 \times 1.0 \approx 0.368$.
+
+The candidate has high precision (everything it says is correct) but low recall (it omits half the reference). BLEU's brevity penalty captures part of this issue; ROUGE captures it directly through recall.
+
+\subsection{Python snippet: classification + generation metrics}
+
+\begin{lstlisting}
+# Classification
+from sklearn.metrics import precision_recall_fscore_support, classification_report
+
+y_true = [1, 1, 1, 0, 0, 0, 1, 0]
+y_pred = [1, 0, 1, 0, 1, 0, 1, 0]
+
+p, r, f1, _ = precision_recall_fscore_support(
+    y_true, y_pred, pos_label=1, average="binary",
+)
+print(f"Precision = {p:.3f}, Recall = {r:.3f}, F1 = {f1:.3f}")
+print("\nFull report:")
+print(classification_report(y_true, y_pred, target_names=["neg", "pos"]))
+
+# BLEU and ROUGE
+# pip install nltk rouge-score
+from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
+from rouge_score import rouge_scorer
+
+reference = "Tunisia won the African Cup of Nations".split()
+candidate = "Tunisia won the cup".split()
+
+bleu = sentence_bleu(
+    [reference], candidate,
+    weights=(1.0, 0, 0, 0),  # BLEU-1
+    smoothing_function=SmoothingFunction().method1,
+)
+print(f"\nBLEU-1 = {bleu:.3f}")
+
+scorer = rouge_scorer.RougeScorer(["rouge1", "rougeL"], use_stemmer=True)
+scores = scorer.score(" ".join(reference), " ".join(candidate))
+for k, v in scores.items():
+    print(f"  {k}: P={v.precision:.3f} R={v.recall:.3f} F={v.fmeasure:.3f}")
+\end{lstlisting}
+
+\subsection{Exercises}
+\begin{enumerate}
+    \item For a NER tagger that finds $80$ true entities, misses $20$, and produces $30$ spurious entities, compute Precision, Recall, and $F_1$ on the entity class.
+    \item Show that for any binary classifier $F_1 \le \min(\mathrm{Precision}, \mathrm{Recall})$, with equality iff $\mathrm{Precision} = \mathrm{Recall}$.
+    \item A language model assigns probabilities $0.5, 0.5, 0.25$ to the three tokens of a held-out sequence. Compute its perplexity. What perplexity would a uniform model over a vocabulary of $|V| = 10{,}000$ achieve?
+    \item For the reference ``\emph{The cat is on the mat}'' and the candidate ``\emph{The cat sits on the mat}'', compute BLEU-2 and ROUGE-2 by hand. What linguistic phenomenon is being measured (or missed) by each?
+    \item (Synthesis.) Design an evaluation protocol for a Tunisian-Arabic dialect-to-French translation system. Identify which metrics you would report, which biases each metric carries (e.g.\ BLEU's surface-form sensitivity), and how you would complement them with human evaluation.
+\end{enumerate}
+
 \end{document}

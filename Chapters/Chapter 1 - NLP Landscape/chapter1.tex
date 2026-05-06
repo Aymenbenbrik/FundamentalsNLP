@@ -412,4 +412,201 @@ A single call returns tokenisation, POS tags, dependency parse, and named entiti
     \item (Open-ended.) Sketch a pipeline that, given a Tunisian e-commerce review written in code-mixed French--Arabic, produces \emph{(a)} an overall sentiment, \emph{(b)} a list of mentioned product aspects, and \emph{(c)} an English summary. Identify each NLP task involved and the order of execution.
 \end{enumerate}
 
+\section{NLP within the AI ecosystem}
+
+\subsection{Motivation}
+Modern NLP is, in practice, a sub-discipline of \emph{machine learning} (ML), which is itself a sub-discipline of \emph{artificial intelligence} (AI). Reading any contemporary NLP paper requires fluency in concepts that originate outside NLP proper: gradient descent, regularization, train/validation/test splits, the bias--variance trade-off, the empirical risk minimization principle. Conversely, modern NLP has pushed the entire ML field forward: Transformers, scaling laws, instruction tuning, chain-of-thought prompting --- innovations born in NLP now drive computer vision, speech, and robotics. Understanding where NLP sits in the broader AI landscape is therefore essential, both to use existing tools correctly and to situate new methods as they appear.
+
+\subsection{Approach by problem: the same data, three paradigms}
+\textbf{Problem.} Suppose you have collected $20{,}000$ tweets about Tunisian banks. Describe how you could exploit this single corpus under three radically different learning regimes:
+\begin{enumerate}
+    \item one in which every tweet has a hand-annotated sentiment label;
+    \item one in which no annotations are available;
+    \item one in which no annotations are available, but you wish to learn \emph{useful representations} of words that subsequent tasks can re-use.
+\end{enumerate}
+
+\textbf{Solution sketch.}
+\begin{enumerate}
+    \item With labels: train a \emph{supervised} sentiment classifier --- input tweet, output positive / negative / neutral.
+    \item Without labels: \emph{cluster} the tweets by topic; discover latent themes (\emph{unsupervised}).
+    \item Without labels but for representation learning: train a model that, for each word, predicts the surrounding words in a sliding window (\emph{self-supervised}). The model never receives ``labels'' from a human; it manufactures its own training signal from the data itself. This is exactly the principle behind Word2Vec (Section~\ref{sec:dense}) and, at much larger scale, behind every Large Language Model.
+\end{enumerate}
+
+\subsection{Situating NLP: AI, ML, DL}
+
+\begin{definition}[Artificial intelligence]
+\textbf{Artificial intelligence} (AI) is the area of computer science concerned with building systems that perform tasks that, when performed by humans, would be said to require \emph{intelligence} --- such as perception, reasoning, learning, language understanding, problem-solving, and action under uncertainty.
+\end{definition}
+
+\begin{definition}[Machine learning]
+\textbf{Machine learning} (ML) is the sub-area of AI in which the system's behaviour is \emph{induced from data} rather than directly programmed by humans. A learning algorithm transforms a dataset $D$ into a predictor $f$.
+\end{definition}
+
+\begin{definition}[Deep learning]
+\textbf{Deep learning} (DL) is the sub-area of ML that uses \emph{deep neural networks} --- parameterised functions composed of many layers of differentiable transformations --- as the predictor family. Deep learning powers most state-of-the-art NLP, computer-vision, and speech systems.
+\end{definition}
+
+The relationships between these fields are strictly inclusive: $\mathrm{DL} \subset \mathrm{ML} \subset \mathrm{AI}$. NLP is a \emph{domain of application}: it draws on rule-based AI for early systems, on statistical ML for the n-gram era, and on deep learning for everything since 2013.
+
+\subsection{The four ingredients of every learned NLP system}
+
+\begin{definition}[Learning ingredients]
+A supervised (or self-supervised) learning system is fully specified by the quadruple
+\[ (D, \mathcal{F}, \mathcal{L}, \mathcal{O}) \]
+where:
+\begin{itemize}
+    \item \textbf{Data} $D = \{(x_i, y_i)\}_{i=1}^N$ --- a set of training examples, each consisting of an input and a target;
+    \item \textbf{Model family} $\mathcal{F} = \{f_\theta : \theta \in \Theta\}$ --- a parameterised set of functions from inputs to predictions;
+    \item \textbf{Loss} $\mathcal{L}(\hat{y}, y)$ --- a scalar measure of how badly a prediction $\hat{y}$ matches the target $y$;
+    \item \textbf{Optimizer} $\mathcal{O}$ --- an algorithm that updates $\theta$ to reduce the average loss on the data.
+\end{itemize}
+\end{definition}
+
+\begin{definition}[Empirical risk minimization]
+The dominant training principle is \textbf{empirical risk minimization} (ERM): seek the parameters $\theta^*$ that minimise the average loss on the training data,
+\[ \theta^* \in \arg\min_{\theta \in \Theta}\, \frac{1}{N} \sum_{i=1}^{N} \mathcal{L}\big(f_\theta(x_i),\, y_i\big). \]
+Computing $\theta^*$ exactly is intractable for neural networks; the optimizer $\mathcal{O}$ (typically Stochastic Gradient Descent or its variants Adam, AdamW) approximates the minimum by iterative updates.
+\end{definition}
+
+\begin{remark}
+The four ingredients are useful as a debugging checklist. If a deployed system underperforms, the cause is almost always traceable to one of them: poor data quality, an inadequate model family, a mismatched loss, or an unstable optimization procedure.
+\end{remark}
+
+\subsection{Three learning paradigms}
+
+\subsubsection*{Supervised learning}
+
+\begin{definition}[Supervised learning]
+Each training example is a pair $(x, y)$ where $y$ is provided by an external annotator (the ``supervision''). The learner's goal is to predict $y$ from $x$ on unseen inputs.
+\end{definition}
+
+\paragraph{NLP examples.} Sentiment classification, machine translation (parallel sentences as labels), POS tagging, NER. The bottleneck is annotation cost: linguistically reliable labels typically cost \$0.10--\$10 per example.
+
+\subsubsection*{Unsupervised learning}
+
+\begin{definition}[Unsupervised learning]
+Training examples consist only of inputs $x$, with no labels. The goal is to discover \emph{structure} in the data: clusters, latent variables, low-dimensional manifolds.
+\end{definition}
+
+\paragraph{NLP examples.} Topic modelling (LDA), document clustering, anomaly detection in log files. Output is structural rather than predictive.
+
+\subsubsection*{Self-supervised learning}
+
+\begin{definition}[Self-supervised learning]
+Training examples consist only of inputs $x$, but the learner constructs a \emph{pretext task} from the data itself --- for example, predicting a hidden portion of $x$ from the rest. Labels are manufactured automatically from the data, eliminating the need for human annotation.
+\end{definition}
+
+\paragraph{Canonical NLP pretext tasks.}
+\begin{itemize}
+    \item \textbf{Causal language modelling}: given the prefix $w_1, \dots, w_{t-1}$, predict the next token $w_t$. Used by GPT-style models.
+    \item \textbf{Masked language modelling}: randomly mask $\sim 15\%$ of tokens, predict them from the surrounding context. Used by BERT.
+    \item \textbf{Skip-gram and CBOW}: predict context words from a centre word, or vice-versa. Used by Word2Vec.
+\end{itemize}
+
+\begin{remark}[Why self-supervision dominates modern NLP]
+Self-supervised pretraining converts \emph{any} large unlabelled text corpus (a substantial fraction of the entire Web) into a training signal. The resulting models acquire general-purpose linguistic competence that is then \emph{transferred} to downstream tasks via fine-tuning or prompting. This decoupling of \emph{representation learning} (cheap, vast) and \emph{task adaptation} (cheap, small) explains the dramatic progress of NLP since 2018.
+\end{remark}
+
+\subsection{Comparison table}
+
+\begin{center}
+\begin{tabular}{|l|l|l|l|}
+\hline
+\textbf{Paradigm} & \textbf{Labels?} & \textbf{Goal} & \textbf{NLP example} \\
+\hline
+Supervised & Provided by humans & Predict $y$ from $x$ & Spam detection \\
+Unsupervised & None & Discover structure & Topic clustering \\
+Self-supervised & Manufactured from $x$ & Learn representations & Next-token prediction (LLMs) \\
+\hline
+\end{tabular}
+\end{center}
+
+\subsection{Worked examples}
+
+\textbf{Example 1 (Identifying the paradigm --- Easy).}
+For each of the following NLP tasks, identify the dominant learning paradigm:
+\begin{enumerate}
+    \item Detecting whether a customer review is positive or negative, given a labelled dataset of $10{,}000$ reviews.
+    \item Discovering the principal themes in $1$~million unlabelled news articles.
+    \item Pretraining a 1B-parameter language model on $300$~GB of Web text.
+\end{enumerate}
+
+\textit{Solution.} (1) Supervised. (2) Unsupervised (typically LDA or K-means on document embeddings). (3) Self-supervised (next-token or masked-token prediction).
+
+\medskip
+
+\textbf{Example 2 (The four ingredients in action --- Medium).}
+Spell out $(D, \mathcal{F}, \mathcal{L}, \mathcal{O})$ for a logistic-regression sentiment classifier trained on bag-of-words features.
+
+\textit{Solution.}
+\begin{itemize}
+    \item $D = \{(x_i, y_i)\}_{i=1}^N$ where $x_i \in \mathbb{R}^V$ is a count vector over a vocabulary of size $V$, and $y_i \in \{0, 1\}$.
+    \item $\mathcal{F} = \big\{\, f_\theta(x) = \sigma(\theta^\top x) \,:\, \theta \in \mathbb{R}^V \,\big\}$ where $\sigma$ is the logistic function.
+    \item $\mathcal{L}(\hat{y}, y) = -\big(y \log \hat{y} + (1 - y)\log(1 - \hat{y})\big)$ (binary cross-entropy).
+    \item $\mathcal{O}$ = Stochastic Gradient Descent (or Adam) on the average of $\mathcal{L}$ over $D$.
+\end{itemize}
+This single example contains every ingredient that scales, in essence, to a billion-parameter Transformer trained on the Web.
+
+\medskip
+
+\textbf{Example 3 (Pretext-task design --- Hard).}
+Suppose you wish to train a self-supervised model that learns useful representations of \emph{Tunisian Arabic} text but you have no labels and no parallel translation data. Propose a concrete pretext task, identify the corresponding $(D, \mathcal{F}, \mathcal{L}, \mathcal{O})$, and discuss one risk specific to dialectal Arabic.
+
+\textit{Solution sketch.}
+\begin{itemize}
+    \item \textbf{Pretext task.} Masked-token prediction: replace $\sim 15\%$ of tokens by a special \texttt{[MASK]}, train the model to recover them.
+    \item \textbf{Data} $D$: a corpus of Tunisian Arabic from social media, news, and forums (e.g.\ scraped Tunisian dialect from forums and Twitter).
+    \item \textbf{Model} $\mathcal{F}$: a Transformer encoder with sub-word tokenization (BPE).
+    \item \textbf{Loss} $\mathcal{L}$: cross-entropy on the masked positions.
+    \item \textbf{Optimizer} $\mathcal{O}$: AdamW with warm-up.
+    \item \textbf{Risk specific to dialectal Arabic.} Orthographic instability: the same word may be spelled in several ways (Latin script ``arabizi'', native script with or without diacritics, code-switched fragments). The tokenizer must be trained on the actual data --- a tokenizer pre-trained on Modern Standard Arabic will fragment dialect words badly.
+\end{itemize}
+
+\subsection{Python snippet: train your first text classifier in 10 lines}
+
+The library \texttt{scikit-learn} provides a complete supervised pipeline.
+
+\begin{lstlisting}
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import classification_report
+
+# Tiny illustrative dataset (replace with your own)
+texts = ["I loved the food and the staff",     # positive
+         "The room was dirty and noisy",       # negative
+         "Fantastic value, will return",       # positive
+         "Worst stay of my life, never again"] # negative
+labels = [1, 0, 1, 0]
+
+clf = Pipeline([
+    ("tfidf", TfidfVectorizer(ngram_range=(1, 2))),
+    ("logreg", LogisticRegression()),
+])
+clf.fit(texts, labels)
+print(clf.predict(["The breakfast was great", "Awful service"]))
+\end{lstlisting}
+
+This snippet instantiates each of the four ingredients: \emph{data} (\texttt{texts}, \texttt{labels}), \emph{model family} (TF-IDF + logistic regression), \emph{loss} (the default cross-entropy of \texttt{LogisticRegression}), and \emph{optimizer} (the default L-BFGS solver). The same recipe scales --- with much larger data, deeper models, and different losses --- to state-of-the-art systems.
+
+\subsection{Exercises}
+\begin{enumerate}
+    \item Place each method in its sub-discipline ($\mathrm{DL} \subset \mathrm{ML} \subset \mathrm{AI}$): expert systems, decision trees, BERT, K-means clustering, A* search, GPT-4.
+    \item For each task, identify the most appropriate learning paradigm:
+    \begin{enumerate}
+        \item Building a chatbot with $500$ examples of (question, answer) pairs;
+        \item Discovering five product-feature themes in $10{,}000$ unlabelled customer reviews;
+        \item Pretraining a French--Arabic encoder on a Web crawl with no aligned data.
+    \end{enumerate}
+    \item Specify the four ingredients $(D, \mathcal{F}, \mathcal{L}, \mathcal{O})$ for a NER tagger using a feed-forward neural network on word-level features.
+    \item Discuss: why does the empirical risk on the \emph{training} set systematically underestimate the empirical risk on \emph{unseen} data? What practical safeguards address this?
+    \item (Open-ended.) For a Tunisian-bank social-media monitoring use case, design a three-stage pipeline:
+    \begin{enumerate}
+        \item self-supervised pretraining of an embedding model on bank-related tweets;
+        \item supervised fine-tuning for sentiment classification using $1{,}000$ hand-labelled tweets;
+        \item unsupervised clustering of negative tweets to identify recurring complaint themes.
+    \end{enumerate}
+    Identify the inputs, outputs, paradigm, and metric for each stage.
+\end{enumerate}
+
 \end{document}

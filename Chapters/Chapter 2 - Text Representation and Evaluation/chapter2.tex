@@ -229,4 +229,187 @@ The same input produces different tokenisations under different algorithms. Read
     \item (Synthesis.) For a multilingual Tunisian dialect dataset (mixing Arabic script, Latin-script arabizi, and French), discuss the trade-offs between (i) using a single multilingual sub-word tokenizer (e.g.\ XLM-R), (ii) training a domain-specific tokenizer on the dataset, and (iii) using language-specific tokenizers for each script and merging the outputs.
 \end{enumerate}
 
+\section{Sparse representations: Bag-of-Words and TF--IDF}
+\label{sec:sparse}
+
+\subsection{Motivation}
+After tokenization, a text is a sequence of integer IDs. To feed such a sequence to a classical machine-learning algorithm --- logistic regression, $k$-nearest-neighbours, support-vector machine --- we need a \emph{fixed-size vector} representation that does not depend on document length. The simplest such representation is the \textbf{Bag-of-Words} (BoW), which counts how often each vocabulary item appears. BoW and its weighted refinement \textbf{TF--IDF} dominated information retrieval and text classification for two decades; they remain strong baselines, fast to compute, easy to debug, and competitive on small or domain-specific data sets.
+
+\subsection{Approach by problem: are these two reviews similar?}
+\textbf{Problem.} Compare the following two hotel reviews:
+\begin{itemize}
+    \item $d_1$: ``\emph{The room was clean. The room was quiet.}''
+    \item $d_2$: ``\emph{The breakfast was great. The room was clean.}''
+\end{itemize}
+Propose a numerical representation for each that lets us measure their similarity, ignoring word order.
+
+\textbf{Solution sketch.} Build a vocabulary by collecting all distinct words: $V = \{\text{the, room, was, clean, quiet, breakfast, great}\}$ (size $7$). For each document, count how often each vocabulary word appears:
+\[ \mathbf{x}_{d_1} = (2, 2, 2, 1, 1, 0, 0)^\top, \quad \mathbf{x}_{d_2} = (2, 1, 2, 1, 0, 1, 1)^\top. \]
+The two vectors share many components (e.g.\ both contain ``the'', ``room'', ``was'', ``clean'') and differ on others (\emph{quiet} only in $d_1$, \emph{breakfast / great} only in $d_2$). Their dot product gives a coarse measure of similarity. This embarrassingly simple recipe is the starting point of all classical NLP.
+
+\subsection{Vector space models}
+
+\begin{definition}[Vector space model]
+A \textbf{vector space model} (VSM) of a corpus is an embedding $\phi : \mathcal{T} \to \mathbb{R}^d$, where $\mathcal{T}$ is the set of textual objects (words or documents) and $d$ is the embedding dimension. Documents are represented as vectors so that geometric operations (dot product, cosine similarity, distance) translate into linguistic operations (similarity, retrieval, clustering).
+\end{definition}
+
+\subsection{Bag-of-Words}
+
+\begin{definition}[Bag-of-Words representation]
+Fix a vocabulary $V = \{w_1, w_2, \dots, w_{|V|}\}$. The \textbf{Bag-of-Words} (BoW) representation of a document $d$ is the vector
+\[ \phi_{\text{BoW}}(d) = \big(\mathrm{tf}(w_1, d),\ \mathrm{tf}(w_2, d),\ \dots,\ \mathrm{tf}(w_{|V|}, d)\big) \in \mathbb{R}^{|V|}, \]
+where $\mathrm{tf}(w, d)$ is the \emph{term frequency} (raw count) of word $w$ in $d$. The representation is named ``bag'' because the order of words is discarded: the document is treated as a multiset.
+\end{definition}
+
+\paragraph{Alternative weightings of $\mathrm{tf}$.}
+\begin{itemize}
+    \item \textbf{Boolean}: $\mathrm{tf}(w, d) \in \{0, 1\}$, indicating presence.
+    \item \textbf{Raw count}: $\mathrm{tf}(w, d) = $ number of occurrences.
+    \item \textbf{Log-normalized}: $\mathrm{tf}(w, d) = \log(1 + \#(w, d))$, mitigating the bias toward long documents.
+    \item \textbf{Length-normalized}: divide raw counts by document length so that all documents have $\ell_1$-norm $1$.
+\end{itemize}
+
+\subsection{The document--term matrix}
+
+\begin{definition}[Document--term matrix]
+Given a corpus $\{d_1, \dots, d_N\}$ and a vocabulary $V$, the \textbf{document--term matrix} is the matrix $X \in \mathbb{R}^{N \times |V|}$ whose entry $X_{ij} = \mathrm{tf}(w_j, d_i)$.
+\end{definition}
+
+In practice $|V|$ is in the tens or hundreds of thousands, while only a few dozen distinct words appear in each document. The matrix is therefore extremely \emph{sparse}: a vast majority of entries are zero. Efficient storage formats (compressed sparse row, CSR; compressed sparse column, CSC) preserve memory by storing only non-zero entries.
+
+\subsection{Limitations of Bag-of-Words}
+
+\begin{itemize}
+    \item \textbf{No word order}: the documents ``\emph{Tunisia beat Egypt}'' and ``\emph{Egypt beat Tunisia}'' yield identical BoW vectors despite their opposite meanings.
+    \item \textbf{Equal weight to all words}: a function word like ``\emph{the}'' contributes the same magnitude as a domain-specific term like ``\emph{Paracetamol}'', even though the latter is far more discriminative.
+    \item \textbf{No semantic similarity}: ``\emph{cat}'' and ``\emph{kitten}'' are orthogonal vectors in $\mathbb{R}^{|V|}$ --- as far apart as ``\emph{cat}'' and ``\emph{democracy}''.
+    \item \textbf{Curse of dimensionality}: $|V| \approx 50{,}000$ produces vectors that are computationally cheap (sparse) but statistically noisy --- many features contribute marginally to any specific task.
+\end{itemize}
+
+The first two limitations are tackled in this section by TF--IDF; the third requires dense embeddings (Section~\ref{sec:dense}). The first --- the loss of order --- is fundamentally unfixable in a bag-of-words framework and is a key driver of the move to recurrent and Transformer models.
+
+\subsection{TF--IDF}
+
+The intuition is to \emph{down-weight} words that appear in many documents (because they discriminate poorly between documents) and \emph{up-weight} words that appear only in a few (because their presence is informative).
+
+\begin{definition}[Inverse document frequency]
+Given a corpus of $N$ documents, the \textbf{document frequency} of a word $w$ is the number of documents that contain $w$ at least once,
+\[ \mathrm{df}(w) = \big|\{ d \in \text{corpus} : w \in d \}\big|. \]
+The \textbf{inverse document frequency} is
+\[ \mathrm{idf}(w) = \log \frac{N}{\mathrm{df}(w)}. \]
+Common variants smooth the formula to avoid division by zero and dampen extreme values:
+\[ \mathrm{idf}_{\text{smooth}}(w) = \log\left(\frac{N + 1}{\mathrm{df}(w) + 1}\right) + 1. \]
+\end{definition}
+
+\begin{definition}[TF--IDF]
+The \textbf{TF--IDF} weight of word $w$ in document $d$ is the product
+\[ \mathrm{tfidf}(w, d) = \mathrm{tf}(w, d) \times \mathrm{idf}(w). \]
+Replacing each entry of the document--term matrix by the corresponding TF--IDF gives the TF--IDF document--term matrix.
+\end{definition}
+
+\paragraph{Intuition.}
+\begin{itemize}
+    \item Words appearing in nearly every document have $\mathrm{df}(w) \approx N$, hence $\mathrm{idf}(w) \approx \log 1 = 0$. They are zeroed out --- the same effect as stop-word removal, but data-driven.
+    \item Words appearing in few documents have $\mathrm{df}(w) \ll N$, hence large $\mathrm{idf}(w)$. They retain (and amplify) their term-frequency contribution.
+    \item Within a single document, TF--IDF still scales with raw term frequency, preserving emphasis on repeated key terms.
+\end{itemize}
+
+\begin{property}[Boundedness of $\mathrm{idf}$]
+For a corpus of $N$ documents, $0 \le \mathrm{idf}(w) \le \log N$ when $\mathrm{idf}$ uses the unsmoothed formula. The maximum is reached when $w$ appears in exactly one document, the minimum when $w$ appears in all of them.
+\end{property}
+
+\subsection{TF--IDF as a probabilistic measure}
+
+\begin{remark}[Information-theoretic flavour]
+$\mathrm{idf}(w) = -\log \frac{\mathrm{df}(w)}{N}$ is the negative log-probability that a randomly chosen document contains the word $w$. A rare word ``surprises'' us when it appears, contributing many bits of information; a common word contributes few. This is a discrete analogue of pointwise mutual information, and the connection has been formalised: TF--IDF approximates a maximum-likelihood estimate under specific generative assumptions.
+\end{remark}
+
+\subsection{Worked examples}
+
+\textbf{Example 1 (BoW from scratch --- Easy).}
+For the two-document corpus
+\begin{itemize}
+    \item $d_1$: ``\emph{the cat sat on the mat}''
+    \item $d_2$: ``\emph{the cat ate the fish}''
+\end{itemize}
+build the vocabulary, the document--term matrix with raw counts, and compute $\mathrm{idf}(w)$ for each word.
+
+\textit{Solution.} $V = \{\text{the, cat, sat, on, mat, ate, fish}\}$.
+\begin{center}
+\begin{tabular}{|c|ccccccc|}
+\hline
+& the & cat & sat & on & mat & ate & fish \\
+\hline
+$d_1$ & 2 & 1 & 1 & 1 & 1 & 0 & 0 \\
+$d_2$ & 2 & 1 & 0 & 0 & 0 & 1 & 1 \\
+\hline
+$\mathrm{df}$ & 2 & 2 & 1 & 1 & 1 & 1 & 1 \\
+$\mathrm{idf}$ & $\log 1=0$ & $0$ & $\log 2$ & $\log 2$ & $\log 2$ & $\log 2$ & $\log 2$ \\
+\hline
+\end{tabular}
+\end{center}
+``\emph{the}'' and ``\emph{cat}'' carry no IDF weight (they appear in every document), while \emph{sat}, \emph{on}, \emph{mat}, \emph{ate}, \emph{fish} all carry weight $\log 2 \approx 0.69$.
+
+\medskip
+
+\textbf{Example 2 (Computing TF--IDF --- Medium).}
+A four-document corpus has $\mathrm{df}(\emph{Tunisia}) = 1$ and $\mathrm{df}(\emph{the}) = 4$. Document $d_1$ contains \emph{Tunisia} once and \emph{the} four times.
+
+(a) Compute $\mathrm{tfidf}(\emph{Tunisia}, d_1)$ and $\mathrm{tfidf}(\emph{the}, d_1)$ using the unsmoothed formula.
+
+(b) Comment on the result: which word's contribution dominates the document representation?
+
+\textit{Solution.}
+$\mathrm{idf}(\emph{Tunisia}) = \log(4/1) = \log 4 \approx 1.39$. $\mathrm{idf}(\emph{the}) = \log(4/4) = 0$.
+$\mathrm{tfidf}(\emph{Tunisia}, d_1) = 1 \times 1.39 = 1.39$. $\mathrm{tfidf}(\emph{the}, d_1) = 4 \times 0 = 0$.
+The discriminative word \emph{Tunisia} dominates the representation, even though it appears only once. The function word \emph{the}, which appears four times, is silenced. This is exactly the desired behaviour: a query for \emph{Tunisia} should retrieve $d_1$, while a query for \emph{the} should not.
+
+\medskip
+
+\textbf{Example 3 (Spam filtering with TF--IDF --- Hard).}
+Consider a spam-filtering corpus. The word \emph{lottery} appears in $50$ out of $5{,}000$ training emails, all of which are spam. The word \emph{meeting} appears in $1{,}200$ emails, half spam, half legitimate. Argue, using TF--IDF and the discriminative power of each feature, why a logistic-regression classifier built on TF--IDF features will give a much larger weight to \emph{lottery} than to \emph{meeting}.
+
+\textit{Solution.} The IDF of \emph{lottery} is $\log(5000/50) = \log 100 \approx 4.6$, while the IDF of \emph{meeting} is $\log(5000/1200) \approx 1.4$. Already, after the IDF re-weighting, \emph{lottery} contributes more to the representation than \emph{meeting} per occurrence. Logistic regression then assigns weights to maximise log-likelihood; \emph{lottery} is correlated with the spam label with probability $1$, while \emph{meeting} is correlated with the spam label with probability $0.5$. The resulting weight on \emph{lottery} reflects both the higher IDF amplification and the stronger label correlation. The classifier is therefore much more sensitive to the word \emph{lottery} when scoring a new e-mail.
+
+\subsection{Python snippet: from text to TF--IDF in 5 lines}
+
+\begin{lstlisting}
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+
+corpus = [
+    "the room was clean the room was quiet",
+    "the breakfast was great the room was clean",
+    "service was slow but the rooms were clean",
+]
+
+# Step 1 : raw counts
+counts = CountVectorizer().fit_transform(corpus)
+print("Raw counts shape:", counts.shape)
+print("Raw counts dense:\n", counts.toarray())
+
+# Step 2 : TF-IDF transform
+tfidf = TfidfVectorizer().fit(corpus)
+X = tfidf.transform(corpus)
+print("\nVocabulary:", tfidf.get_feature_names_out())
+print("TF-IDF matrix:\n", X.toarray().round(2))
+
+# Inspect the IDF of each token
+for term, score in zip(tfidf.get_feature_names_out(), tfidf.idf_):
+    print(f"  idf('{term}') = {score:.3f}")
+\end{lstlisting}
+
+\subsection{Exercises}
+\begin{enumerate}
+    \item Build the BoW vocabulary, the document--term matrix, the IDF vector and the full TF--IDF matrix (smoothed) for the corpus
+    \begin{itemize}
+        \item $d_1$: ``\emph{NLP is fun and useful}''
+        \item $d_2$: ``\emph{Tunisia is a country in North Africa}''
+        \item $d_3$: ``\emph{NLP is widely used in Tunisia}''
+    \end{itemize}
+    \item Show that for a corpus of $N$ documents, the maximum possible IDF (unsmoothed) is $\log N$ and is reached when a word appears in exactly one document. Conversely, show that words appearing in every document have $\mathrm{idf}(w) = 0$ and contribute zero TF--IDF weight.
+    \item Two documents, $d_1$ and $d_2$, share exactly the same set of words but with different counts. Are their BoW vectors necessarily different? Are their normalised BoW vectors (length-normalised) necessarily different?
+    \item TF--IDF is purely lexical and shares no information across morphological variants (\emph{run} and \emph{running} are unrelated columns of the document--term matrix). Propose two engineering remedies (one classical, one modern) and one situation in which each is preferable.
+    \item (Open-ended.) Suppose you must build a search engine over a corpus of $100{,}000$ Tunisian-Arabic news articles. Discuss whether you would prefer a TF--IDF index, a dense-vector index (Section~\ref{sec:dense}), or a hybrid of the two. Identify a concrete query that one method handles but not the other.
+\end{enumerate}
+
 \end{document}

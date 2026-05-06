@@ -609,4 +609,197 @@ This snippet instantiates each of the four ingredients: \emph{data} (\texttt{tex
     Identify the inputs, outputs, paradigm, and metric for each stage.
 \end{enumerate}
 
+\section{Discriminative vs.\ generative models}
+
+\subsection{Motivation}
+A foundational distinction in machine learning splits models into two families: those that learn the \emph{conditional distribution} $P(y \mid x)$ of a label given an input (\emph{discriminative}), and those that learn the \emph{joint} or \emph{marginal} distribution $P(x, y)$ or $P(x)$ (\emph{generative}). The distinction is not academic --- it determines what data you need, what you can do at inference time, and how you should evaluate the system. Crucially, every modern Large Language Model is a generative model that has learnt to solve discriminative tasks \emph{by being prompted}; understanding this paradigm shift requires fluency with both families.
+
+\subsection{Approach by problem: classify or generate?}
+\textbf{Problem.} Given a corpus of customer reviews, contrast two systems:
+\begin{enumerate}
+    \item System A: predicts the sentiment label of a new review.
+    \item System B: writes a new, plausible review.
+\end{enumerate}
+Which probability distribution must each system represent? Could either be repurposed for the other's task?
+
+\textbf{Solution sketch.} System A only needs the conditional distribution $P(\text{sentiment} \mid \text{review})$. It does not need to know what reviews look like in detail; it only needs the \emph{decision boundary} between positive and negative reviews. System B, in contrast, needs $P(\text{review})$ --- a model of what an arbitrary review looks like. Repurposing: System B can in principle answer the discriminative question by computing $P(\text{review} \mid \text{positive}) / P(\text{review} \mid \text{negative})$ via Bayes, but System A cannot generate reviews; the generative model is therefore strictly more expressive (and harder to learn).
+
+\subsection{Discriminative models}
+
+\begin{definition}[Discriminative model]
+A \textbf{discriminative model} parameterises the conditional probability of the label given the input,
+\[ P_\theta(y \mid x), \qquad \theta \in \Theta. \]
+At inference, predict $\hat{y} = \arg\max_y P_\theta(y \mid x)$ (or sample from the conditional, in soft-prediction settings).
+\end{definition}
+
+\paragraph{Examples in NLP.}
+\begin{itemize}
+    \item Logistic regression for spam detection.
+    \item Conditional random fields for NER.
+    \item Encoder-only Transformers (BERT, RoBERTa, DeBERTa) fine-tuned for classification, NER, or extractive QA.
+\end{itemize}
+
+\paragraph{Strengths.} Direct optimization of the quantity of interest (the label probability); typically less data-hungry than generative models for a fixed task; tends to outperform comparable generative models on discriminative tasks.
+
+\paragraph{Limitations.} Cannot generate text; cannot detect anomalous inputs (since $P(x)$ is unknown); usually requires labelled data.
+
+\subsection{Generative models}
+
+\begin{definition}[Generative model]
+A \textbf{generative model} parameterises a probability distribution over the input space (or jointly over input and label):
+\[ P_\theta(x) \quad\text{or}\quad P_\theta(x, y). \]
+At inference, generative models can: \emph{(i)} sample new $x$ from $P_\theta$; \emph{(ii)} score the likelihood of an observed $x$; and \emph{(iii)} via Bayes, derive a discriminative classifier $P_\theta(y \mid x) \propto P_\theta(x \mid y) P_\theta(y)$.
+\end{definition}
+
+\paragraph{Examples in NLP.}
+\begin{itemize}
+    \item N-gram language models: $P(w_t \mid w_{t-n+1}, \dots, w_{t-1})$.
+    \item Hidden Markov Models: a generative process for sequences.
+    \item Decoder-only Transformers (GPT, LLaMA, Claude, Gemini): autoregressive generative language models, $P(w_t \mid w_1, \dots, w_{t-1})$, scaled to billions of parameters.
+    \item Encoder--decoder Transformers (T5, BART): generative for sequence-to-sequence tasks (translation, summarization).
+\end{itemize}
+
+\paragraph{Strengths.} Can generate; can score arbitrary text; can be re-purposed for many downstream tasks via \emph{prompting}; admit unlabelled training data by self-supervision.
+
+\paragraph{Limitations.} Far more parameters and data are required; harder to evaluate; their conditional probabilities derived via Bayes are typically less calibrated than those of a directly trained discriminative model.
+
+\subsection{Comparison and the modern blur}
+
+\begin{center}
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Aspect} & \textbf{Discriminative} & \textbf{Generative} \\
+\hline
+Distribution & $P(y \mid x)$ & $P(x)$ or $P(x, y)$ \\
+Training data & Labelled $(x, y)$ pairs & Often unlabelled $x$ \\
+NLP archetypes & BERT, logistic regression, CRF & GPT, n-grams, T5 \\
+Can predict labels & Yes, directly & Yes, via Bayes \\
+Can generate text & No & Yes \\
+Sample efficiency & Higher for the target task & Lower per task; reusable across tasks \\
+Modern role & Specialised, fine-tuned models & Foundation models, prompted \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{remark}[The modern blur]
+Until 2018, the discriminative--generative split correlated tightly with the model architecture: one trained a separate model for each task. Modern Large Language Models have eroded this distinction. A decoder-only Transformer such as GPT-4 is a generative model in its training objective (next-token prediction) but is routinely \emph{prompted} to solve discriminative tasks: ``\emph{Classify the following review as positive or negative: \dots\,}''. The model produces the answer as a continuation, exploiting its general linguistic competence. This paradigm --- a single generative model handling the full task taxonomy --- explains the centrality of LLMs in contemporary NLP.
+\end{remark}
+
+\subsection{The Bayes bridge}
+
+\begin{proposition}[From generative to discriminative]
+Any generative model with $P_\theta(x \mid y)$ and a class prior $P_\theta(y)$ induces a discriminative classifier via Bayes' rule:
+\[ P_\theta(y \mid x) = \frac{P_\theta(x \mid y)\, P_\theta(y)}{\sum_{y'} P_\theta(x \mid y')\, P_\theta(y')}. \]
+\end{proposition}
+
+\begin{proof}
+Direct application of the definition of conditional probability: $P(y \mid x) = P(x, y) / P(x)$, with $P(x)$ obtained by marginalisation $\sum_{y'} P(x, y')$. The class-conditional decomposition $P(x, y) = P(x \mid y) P(y)$ completes the derivation.
+\end{proof}
+
+\begin{remark}
+The bridge is one-directional: a discriminative model $P(y \mid x)$ does \emph{not} suffice to recover $P(x)$, because the marginal is integrated over $y$ in a way that loses information about specific $x$-shapes.
+\end{remark}
+
+\subsection{Worked examples}
+
+\textbf{Example 1 (Identifying the family --- Easy).}
+Classify each model as discriminative, generative, or both:
+\begin{enumerate}
+    \item Naive Bayes spam classifier;
+    \item BERT fine-tuned for NER;
+    \item GPT-4 used to generate marketing copy;
+    \item GPT-4 prompted to label movie reviews as positive/negative;
+    \item A Transformer trained to predict the next token of a code corpus.
+\end{enumerate}
+
+\textit{Solution.}
+\begin{enumerate}
+    \item \textbf{Generative} --- Naive Bayes models $P(x \mid y) P(y)$ explicitly, even though it is most often used for classification.
+    \item \textbf{Discriminative} --- BERT fine-tuned for NER directly models $P(\text{tag-sequence} \mid \text{tokens})$.
+    \item \textbf{Generative}.
+    \item \textbf{Generative used discriminatively} --- the underlying model is generative but it is being applied to a discriminative task via prompting.
+    \item \textbf{Generative}.
+\end{enumerate}
+
+\medskip
+
+\textbf{Example 2 (Bayes bridge in practice --- Medium).}
+A Naive Bayes spam classifier estimates from training data:
+\[ P(\text{spam}) = 0.2, \quad P(\text{ham}) = 0.8. \]
+For a particular short message $x$, the model also estimates
+\[ P(x \mid \text{spam}) = 10^{-4}, \quad P(x \mid \text{ham}) = 5 \times 10^{-6}. \]
+Compute $P(\text{spam} \mid x)$.
+
+\textit{Solution.}
+\[ P(\text{spam} \mid x) = \frac{0.2 \times 10^{-4}}{0.2 \times 10^{-4} + 0.8 \times 5 \times 10^{-6}} = \frac{2 \times 10^{-5}}{2 \times 10^{-5} + 4 \times 10^{-6}} = \frac{20}{24} \approx 0.833. \]
+The message is classified as spam with $\approx 83\%$ confidence. Note that the prior $P(\text{spam}) = 0.2$ is much smaller than $0.833$ --- the class-conditional likelihood ratio shifts the posterior strongly.
+
+\medskip
+
+\textbf{Example 3 (Modern LLM as a discriminative substitute --- Hard).}
+You wish to build a sentiment analysis system for product reviews. You can choose between:
+\begin{itemize}
+    \item (a) Fine-tuning a 110M-parameter BERT model on $5{,}000$ labelled reviews;
+    \item (b) Prompting a 100B-parameter generative LLM with the same $5{,}000$ reviews as in-context examples.
+\end{itemize}
+Discuss three trade-offs.
+
+\textit{Solution.}
+\begin{enumerate}
+    \item \textbf{Cost.} Option (a) requires GPU-hours for fine-tuning and a small inference-time footprint; option (b) requires zero training but expensive per-call inference (LLM API or large GPU).
+    \item \textbf{Sample efficiency / accuracy.} BERT fine-tuned on $5{,}000$ examples typically attains higher accuracy on the target task than an LLM with $5{,}000$ in-context demonstrations, because the discriminative architecture is directly optimised for the task. The LLM, however, requires no update to its parameters and can be redirected to a new task by editing the prompt.
+    \item \textbf{Maintenance and adaptation.} BERT must be re-fine-tuned each time the label set changes; the LLM accommodates new labels by prompt rewriting, at no parameter cost. In a fast-evolving product catalogue, this can dominate other considerations.
+\end{enumerate}
+
+\subsection{Python snippet: probabilistic interpretation}
+
+\begin{lstlisting}
+import numpy as np
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.linear_model import LogisticRegression
+from sklearn.feature_extraction.text import CountVectorizer
+
+texts = [
+    "great service highly recommend",   # positive
+    "terrible food never again",        # negative
+    "loved the room and the staff",     # positive
+    "worst experience of my life",      # negative
+]
+labels = [1, 0, 1, 0]
+
+X = CountVectorizer().fit_transform(texts)
+
+# Generative: Multinomial Naive Bayes
+gen = MultinomialNB().fit(X, labels)
+print("Naive Bayes log P(x|y) and P(y):")
+print("  log P(y)   :", gen.class_log_prior_)
+print("  log P(x|y) shape:", gen.feature_log_prob_.shape)
+
+# Discriminative: Logistic Regression
+disc = LogisticRegression().fit(X, labels)
+print("\nLogistic Regression P(y|x) on a held-out sentence:")
+heldout = CountVectorizer(vocabulary=
+            CountVectorizer().fit(texts).vocabulary_).fit_transform(
+            ["the food was perfect"])
+print("  P(y|x) :", disc.predict_proba(heldout))
+\end{lstlisting}
+
+The \texttt{class\_log\_prior\_} and \texttt{feature\_log\_prob\_} attributes of \texttt{MultinomialNB} are exactly the generative quantities $\log P(y)$ and $\log P(x \mid y)$; the \texttt{predict\_proba} of \texttt{LogisticRegression} is the discriminative quantity $P(y \mid x)$.
+
+\subsection{Exercises}
+\begin{enumerate}
+    \item Classify each model as discriminative, generative, or hybrid:
+    \begin{enumerate}
+        \item Hidden Markov Model for POS tagging;
+        \item Conditional Random Field for NER;
+        \item Variational Auto-Encoder for text;
+        \item Decoder-only Transformer used as a chatbot;
+        \item Encoder-only Transformer used as a sentiment classifier.
+    \end{enumerate}
+    \item Suppose a generative spam model gives $P(x \mid \text{spam}) = 2 \times 10^{-5}$, $P(x \mid \text{ham}) = 10^{-3}$, with priors $P(\text{spam}) = 0.3$, $P(\text{ham}) = 0.7$. Compute the posterior probability that $x$ is spam.
+    \item Argue why a generative model used for classification can outperform a discriminative model when training data is scarce. (Hint: think about what the generative model can ``learn from'' beyond the labels.)
+    \item In the LLM-as-classifier paradigm, the model receives a prompt such as ``\emph{Classify: positive or negative? --- This restaurant was excellent.}'' Identify three sources of variance in the predicted label and propose a mitigation for each.
+    \item (Synthesis.) For a moderation system that must \emph{(a)} classify a tweet as toxic / safe and \emph{(b)} detect previously unseen forms of toxicity, argue why a hybrid discriminative + generative architecture could outperform either alone.
+\end{enumerate}
+
 \end{document}

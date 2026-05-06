@@ -204,4 +204,212 @@ Running this snippet illustrates that even commonplace words carry many distinct
     \item (Synthesis.) Suppose you must build a customer-service chatbot for a Tunisian e-commerce site that receives messages mixing French, Arabic and English. Identify, for each of the three challenges (\emph{ambiguity}, \emph{context}, \emph{variability}), one concrete obstacle your system will face that an English-only system would not.
 \end{enumerate}
 
+\section{Major NLP tasks and applications}
+
+\subsection{Motivation}
+NLP is not a single problem; it is a constellation of problems, each with its own \emph{input format}, \emph{output structure}, \emph{evaluation metric}, and \emph{characteristic methods}. A sentiment classifier and a machine-translation system both consume text, but they belong to different computational categories and therefore demand different architectures and training data. Practitioners must develop a clear taxonomy of NLP tasks for three practical reasons:
+\begin{enumerate}
+    \item to \emph{frame} a real-world business problem as the right computational task;
+    \item to \emph{select} the appropriate model family (classification vs.\ sequence labelling vs.\ generation);
+    \item to \emph{evaluate} models with metrics that match the task --- accuracy is meaningful for classification but disastrous as a sole metric for translation.
+\end{enumerate}
+
+\subsection{Approach by problem: one dataset, many tasks}
+\textbf{Problem.} You receive a corpus of $50{,}000$ customer reviews of a hotel chain. Each review is a paragraph of free text, sometimes with a star rating, sometimes not. Your manager asks: ``What can we do with this data?'' List at least five distinct NLP problems you could solve from \emph{the same} raw input.
+
+\textbf{Solution sketch.} The same corpus can power multiple downstream tasks:
+\begin{enumerate}
+    \item \textbf{Sentiment analysis} --- classify each review as positive, negative, or neutral.
+    \item \textbf{Topic classification} --- assign reviews to themes (food, cleanliness, location, staff).
+    \item \textbf{Aspect-based sentiment} --- extract sentiment per aspect (``rooms: positive, breakfast: negative'').
+    \item \textbf{Named entity recognition} --- extract place names, dates, hotel branches mentioned.
+    \item \textbf{Summarization} --- produce a one-sentence digest of each review.
+    \item \textbf{Translation} --- translate Arabic and French reviews into English for cross-lingual analytics.
+    \item \textbf{Question answering} --- support a query interface (``What do guests say about the pool?'').
+\end{enumerate}
+Each item belongs to a different computational category, requires different annotated data, and is evaluated with different metrics. The remainder of this section gives a structured tour of these categories.
+
+\subsection{A taxonomy by input--output structure}
+
+We organise NLP tasks by what the model \emph{consumes} and \emph{produces}.
+
+\begin{center}
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Category} & \textbf{Input} & \textbf{Output} \\
+\hline
+Text classification & text & one (or several) discrete labels \\
+Sequence labelling & text & one label per token \\
+Sequence-to-sequence & text & a different text \\
+Question answering & question + context & answer (span or text) \\
+Open-ended generation & prompt & arbitrary text \\
+\hline
+\end{tabular}
+\end{center}
+
+The categories form a rough \emph{spectrum of output complexity}, from a single integer (classification) to a free-form sequence (generation). Each step adds expressive power and evaluation difficulty.
+
+\subsection{Text classification}
+
+\begin{definition}[Text classification]
+Given an input text $x$ drawn from a domain $\mathcal{X}$ and a finite label set $\mathcal{Y} = \{y_1, \dots, y_K\}$, learn a function $f : \mathcal{X} \to \mathcal{Y}$ (single-label) or $f : \mathcal{X} \to \mathcal{P}(\mathcal{Y})$ (multi-label) that assigns labels to texts.
+\end{definition}
+
+\paragraph{Canonical applications.}
+\begin{itemize}
+    \item \textbf{Sentiment analysis} --- $\mathcal{Y} = \{\text{positive}, \text{negative}, \text{neutral}\}$. Powers product-review analytics, social-media monitoring, financial-sentiment trading signals.
+    \item \textbf{Spam detection} --- $\mathcal{Y} = \{\text{spam}, \text{ham}\}$. The earliest commercially deployed NLP application at scale.
+    \item \textbf{Topic classification} --- assign a document to one of several thematic categories (politics, sports, technology, $\ldots$).
+    \item \textbf{Intent detection} --- in chatbots, classify a user utterance into pre-defined intents (\textsc{book-flight}, \textsc{cancel-order}, \textsc{ask-status}).
+    \item \textbf{Toxicity / hate-speech detection} --- moderate user-generated content on social platforms.
+\end{itemize}
+
+\paragraph{Standard metrics.} Accuracy, Precision, Recall, $F_1$ (Section~\ref{sec:eval-classification} will define them precisely).
+
+\subsection{Sequence labelling}
+
+\begin{definition}[Sequence labelling]
+Given a sequence of tokens $x = (x_1, x_2, \dots, x_n)$, predict a sequence of labels $y = (y_1, y_2, \dots, y_n)$ of the same length, where each $y_i$ belongs to a finite label set $\mathcal{Y}$.
+\end{definition}
+
+The output dimension grows with the input, in contrast to classification.
+
+\paragraph{Canonical applications.}
+\begin{itemize}
+    \item \textbf{Part-of-speech (POS) tagging} --- label every token with its grammatical role: \emph{noun, verb, adjective, $\ldots$}
+    \begin{quote}
+    ``\emph{Apple/NOUN released/VERB a/DET new/ADJ phone/NOUN.}''
+    \end{quote}
+    \item \textbf{Named Entity Recognition (NER)} --- label tokens that participate in named entities (persons, organizations, locations, dates) with their type and span.
+    \begin{quote}
+    ``\emph{Apple/B-ORG was/O founded/O by/O Steve/B-PER Jobs/I-PER in/O Cupertino/B-LOC.}''
+    \end{quote}
+    The \texttt{B-}/\texttt{I-}/\texttt{O} scheme distinguishes \emph{Begin} of an entity, \emph{Inside}, and \emph{Outside}.
+    \item \textbf{Chunking and shallow parsing} --- group tokens into noun phrases, verb phrases.
+    \item \textbf{Slot filling} --- in dialogue systems, identify the \textsc{Date}, \textsc{Origin}, \textsc{Destination} slots in user utterances.
+\end{itemize}
+
+\paragraph{High-impact applications.} Pharmacovigilance (drug-name extraction from medical records), legal-document analysis (clause boundaries), bioinformatics (gene and protein-name recognition), search-engine query understanding.
+
+\subsection{Sequence-to-sequence}
+
+\begin{definition}[Sequence-to-sequence task]
+Given a source sequence $x = (x_1, \dots, x_n)$, produce a target sequence $y = (y_1, \dots, y_m)$ where $m$ may differ from $n$ and the target vocabulary may differ from the source.
+\end{definition}
+
+This category is the most general; it subsumes any task where the output is itself a piece of text.
+
+\paragraph{Canonical applications.}
+\begin{itemize}
+    \item \textbf{Machine translation} --- map a sentence in source language $L_1$ to its translation in target language $L_2$. Output length, word order, and idioms differ from the source.
+    \item \textbf{Abstractive summarization} --- produce a short summary that need not reuse the exact wording of the input. Contrast with \emph{extractive} summarization, which selects sentences from the input verbatim.
+    \item \textbf{Paraphrasing and style transfer} --- rewrite a text with the same meaning but different surface form (e.g.\ formal to informal).
+    \item \textbf{Grammar correction} --- map an error-laden sentence to its corrected version.
+\end{itemize}
+
+\paragraph{Standard metrics.} BLEU (translation), ROUGE (summarization). Both are studied formally in Section~\ref{sec:eval-generation}.
+
+\subsection{Question answering}
+
+\begin{definition}[Question answering]
+Given a question $q$ and (optionally) a context document or knowledge base $c$, produce an answer $a$ to the question.
+\end{definition}
+
+QA is conceptually a special case of sequence-to-sequence but is distinguished by the structure of the input (question + context) and by several distinct sub-paradigms:
+
+\begin{itemize}
+    \item \textbf{Extractive QA}. The answer is a contiguous span of the context document. The model's job is to predict the start and end positions. Typical of reading-comprehension benchmarks (SQuAD).
+    \item \textbf{Closed-book QA}. No context is provided; the model must rely on knowledge stored in its parameters.
+    \item \textbf{Open-domain QA}. The model first \emph{retrieves} relevant documents from a large corpus, then reads them to extract the answer. This is the foundation of the \emph{retrieval-augmented generation} (RAG) pattern.
+    \item \textbf{Generative QA}. The answer is generated freely, possibly synthesising information from the context.
+\end{itemize}
+
+\paragraph{Industrial deployments.} Customer-service chatbots (intent$+$slot extraction), Web search (featured snippets), enterprise document search.
+
+\subsection{Open-ended generation}
+
+\begin{definition}[Open-ended generation]
+Given a prompt $x$, produce a continuation $y$ that is fluent, coherent, and consistent with $x$ but otherwise underdetermined.
+\end{definition}
+
+This is the regime of large language models. The task is intentionally under-specified: many distinct continuations may be acceptable. Evaluation is therefore especially challenging.
+
+\paragraph{Applications.} Creative writing assistance, code generation (autocomplete and full-function synthesis), dialogue agents, automatic e-mail drafting, automated report generation from structured data.
+
+\subsection{Worked examples}
+
+\textbf{Example 1 (Task framing --- Easy).}
+You are given the following row from a dataset of medical encounter notes:
+\begin{quote}
+\emph{Patient (45 y, F) reports persistent headache and was prescribed Paracetamol 500 mg twice a day.}
+\end{quote}
+Identify two distinct NLP tasks that operate on this single sentence, naming the appropriate category for each.
+
+\textit{Solution.}
+\begin{itemize}
+    \item \textbf{Named Entity Recognition} (sequence labelling): extract \texttt{[Drug: Paracetamol]}, \texttt{[Dose: 500 mg]}, \texttt{[Frequency: twice a day]}, \texttt{[Symptom: headache]}.
+    \item \textbf{Text classification}: classify the note's clinical specialty (e.g.\ \emph{neurology}).
+\end{itemize}
+
+\medskip
+
+\textbf{Example 2 (Choosing the right output structure --- Medium).}
+You wish to build a system that, given a research-paper abstract, produces ``the three most important takeaways''. Should you frame this as a sequence-to-sequence task or as a classification task? Justify.
+
+\textit{Solution.} A classification task forces the output into a finite, pre-defined set of labels --- but the ``takeaways'' are free-form sentences whose content depends on each abstract. The natural framing is therefore \emph{abstractive summarization} (sequence-to-sequence), with an additional length constraint that forces the output to consist of three short sentences.
+A pre-defined-label classification approach would be tractable only if you replaced ``the three most important takeaways'' by ``one of $K$ predefined research-area tags,'' which is a substantively different problem.
+
+\medskip
+
+\textbf{Example 3 (Decomposing a complex query --- Hard).}
+A user asks the chatbot of a Tunisian airline: ``\emph{I bought a ticket to Paris last week, but my passport just expired. What should I do?}'' Decompose this single utterance into the NLP sub-tasks the system must execute to respond usefully.
+
+\textit{Solution.}
+\begin{enumerate}
+    \item \textbf{Intent detection} (classification): the intent is approximately \textsc{help-with-document-issue} or \textsc{change-booking}.
+    \item \textbf{Slot filling / NER} (sequence labelling): extract \texttt{[Destination: Paris]}, \texttt{[BookingDate: last week]}, \texttt{[DocumentIssue: expired passport]}.
+    \item \textbf{Knowledge retrieval} (open-domain QA): fetch the airline's policy on travel-document issues.
+    \item \textbf{Generation}: synthesise an empathetic, accurate, and fluent response that explains the available options (refund, ticket transfer, document renewal).
+\end{enumerate}
+A modern dialogue system performs these steps either as separate components in a pipeline, or jointly inside a single large language model that is prompted with the user message and policy documents.
+
+\subsection{Python snippet: spaCy pipeline}
+
+The library \texttt{spaCy} ships pre-trained models that perform several of the tasks above in a single forward pass.
+
+\begin{lstlisting}
+# pip install spacy && python -m spacy download en_core_web_sm
+import spacy
+nlp = spacy.load("en_core_web_sm")
+text = ("Apple was founded by Steve Jobs in Cupertino in 1976. "
+        "Today, the company is worth over $3 trillion.")
+doc = nlp(text)
+
+print("Tokens with POS tags:")
+for token in doc[:10]:
+    print(f"  {token.text:<12s} {token.pos_:<6s} {token.dep_}")
+
+print("\nNamed entities:")
+for ent in doc.ents:
+    print(f"  {ent.text:<20s} -> {ent.label_}")
+\end{lstlisting}
+
+A single call returns tokenisation, POS tags, dependency parse, and named entities --- a concrete instantiation of the sequence-labelling and classification ideas of this section.
+
+\subsection{Exercises}
+\begin{enumerate}
+    \item For each of the following, identify the most appropriate NLP task category (classification, sequence labelling, sequence-to-sequence, QA, generation):
+    \begin{enumerate}
+        \item Detecting whether an SMS is fraudulent.
+        \item Translating a Tunisian Arabic Facebook post into French.
+        \item Extracting the names of all medications mentioned in a pharmacist's note.
+        \item Producing a one-paragraph summary of a court ruling.
+        \item Determining the writer's age range from a blog post.
+    \end{enumerate}
+    \item For \emph{aspect-based sentiment analysis} (e.g.\ ``the food was great but the service was slow''), argue that the natural framing combines two distinct task categories. Which two?
+    \item Choose one industry (healthcare, finance, legal, education) and list three concrete NLP applications it uses. For each, identify the input, the output, and the dominant challenge from Section 1.1.
+    \item Discuss: should a search-engine query understanding system be framed as classification, sequence labelling, or generation? Defend your choice and identify trade-offs.
+    \item (Open-ended.) Sketch a pipeline that, given a Tunisian e-commerce review written in code-mixed French--Arabic, produces \emph{(a)} an overall sentiment, \emph{(b)} a list of mentioned product aspects, and \emph{(c)} an English summary. Identify each NLP task involved and the order of execution.
+\end{enumerate}
+
 \end{document}

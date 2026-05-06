@@ -1,0 +1,111 @@
+\documentclass[12pt,a4paper,openright]{report}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{amsmath, amssymb, amsthm, amsfonts}
+\usepackage{geometry}
+\geometry{hmargin=2.5cm,vmargin=2.5cm}
+\usepackage{xcolor}
+\usepackage{tikz}
+
+\usepackage{listings}
+\lstset{
+    language=Python,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue}\bfseries,
+    stringstyle=\color{red},
+    commentstyle=\color{green!60!black}\itshape,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    stepnumber=1,
+    frame=single,
+    breaklines=true
+}
+
+\usepackage[colorlinks=true,
+            linkcolor=blue!60!black,
+            urlcolor=blue!60!black,
+            citecolor=blue!60!black,
+            bookmarks=true,
+            bookmarksnumbered=true,
+            pdftitle={Fundamentals of NLP},
+            pdfauthor={Aymen Ben Brik}]{hyperref}
+
+% Theorem environments (continuous numbering)
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{example}{Example}[section]
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}[section]
+\newtheorem{property}{Property}[section]
+
+\title{
+    \vspace*{2cm}
+    {\Huge \textbf{Fundamentals of}} \\[0.3cm]
+    {\Huge \textbf{Natural Language Processing}} \\[1cm]
+    {\Large Course material} \\[0.3cm]
+    {\large M1 GAMMA \quad \&\quad L2 LMAD --- Data Science}
+}
+\author{Aymen Ben Brik}
+\date{\today}
+
+\begin{document}
+
+% --- Title page ---
+\begin{titlepage}
+\maketitle
+\vfill
+\begin{center}
+\begin{tabular}{ll}
+\textbf{Course} & Fundamentals of Natural Language Processing \\
+\textbf{Audience} & M1 GAMMA \\
+                  & L2 LMAD --- Data Science \\
+\textbf{Author} & Aymen Ben Brik \\
+\textbf{Repository} & \url{https://github.com/Aymenbenbrik/FundamentalsNLP} \\
+\end{tabular}
+\end{center}
+\vfill
+\end{titlepage}
+
+% --- Foreword ---
+\chapter*{Foreword}
+\addcontentsline{toc}{chapter}{Foreword}
+
+This document is the unified support for an introductory Natural Language Processing course aimed at first-year M1 (GAMMA) and second-year L2 (LMAD Data Science) students. It assumes basic Python programming, working knowledge of machine learning and linear algebra (vectors, dot products, distances), and a willingness to read mathematical definitions.
+
+\paragraph{Pedagogy.} Each chapter follows a unified structure: a concrete \emph{motivation}, an \emph{approach by problem}, formal \emph{definitions and theorems} with proofs where appropriate, \emph{worked examples} of ascending difficulty, integrated \emph{Python code} (\texttt{scikit-learn}, \texttt{NLTK}, \texttt{gensim}, \texttt{spaCy}, \texttt{transformers}), and \emph{exercises}. Many examples and exercises are framed in a Tunisian or multilingual context to ensure relevance to the target audience.
+
+\paragraph{Companion material.} Four Jupyter lab notebooks accompany the chapters in the \texttt{Notebooks/} folder of the GitHub repository:
+\begin{itemize}
+    \item \texttt{lab01-tokenization.ipynb} --- whitespace, regex, BPE from scratch, BERT vs GPT-2 tokenizers.
+    \item \texttt{lab02-bow-tfidf-classifier.ipynb} --- Bag-of-Words, TF--IDF, logistic-regression classifier with feature interpretation.
+    \item \texttt{lab03-word2vec-embeddings.ipynb} --- skip-gram / CBOW, similarity, analogies, PCA visualization.
+    \item \texttt{lab04-evaluation-metrics.ipynb} --- classification metrics, ROC / PR curves, perplexity, BLEU, ROUGE.
+\end{itemize}
+
+\paragraph{Learning objectives.} By the end of this course, the student should be able to:
+\begin{enumerate}
+    \item Define NLP and identify its three core challenges (ambiguity, context, variability).
+    \item Recognize the major NLP tasks and their real-world applications.
+    \item Situate NLP within the broader AI / ML / DL landscape and identify the dominant learning paradigms.
+    \item Distinguish discriminative from generative modelling approaches.
+    \item Trace the historical evolution of NLP from rule-based systems to large language models.
+    \item Apply tokenization strategies appropriate to a given task and language.
+    \item Build sparse (BoW, TF--IDF) and dense (Word2Vec, GloVe, FastText) text representations.
+    \item Compute and interpret cosine, dot-product and Euclidean similarities.
+    \item Evaluate NLP systems with task-appropriate metrics (Precision, Recall, F$_1$, perplexity, BLEU, ROUGE) and recognise their pitfalls.
+\end{enumerate}
+
+% --- Table of contents ---
+\tableofcontents
+
+% --- Chapters ---
+\input{ch1}
+\input{ch2}
+
+\end{document}

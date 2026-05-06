@@ -1,0 +1,969 @@
+\chapter{Text Representation and Evaluation}
+
+A computer cannot operate on raw text. Before any model can ``read'' a sentence, the sentence must be \emph{tokenized} (cut into discrete units), \emph{numericalized} (converted into integer indices), and \emph{vectorized} (embedded in a vector space). This chapter develops the chain rigorously: tokenization granularities, sparse and dense vector-space models, semantic similarity, and the evaluation metrics by which we compare NLP systems.
+
+\section{Tokenization fundamentals}
+
+\subsection{Motivation}
+Tokenization is the unsung hero of every NLP pipeline. A poor tokenizer silently undermines the most sophisticated downstream model: out-of-vocabulary words become unknown tokens, morphological variants are treated as unrelated, multi-word expressions are fragmented. Conversely, a tokenizer aligned with the data distribution can shrink vocabulary size, accelerate training, and improve generalisation. Modern Large Language Models all rely on a single technical choice --- \emph{sub-word tokenization} --- whose strengths and limitations every practitioner should understand.
+
+\subsection{Approach by problem: how many tokens are in this sentence?}
+\textbf{Problem.} Consider the sentence
+\begin{quote}
+\emph{``I've been to Sfax-University; it's amazing!''}
+\end{quote}
+Count how many ``tokens'' it contains under each of the following naive policies:
+\begin{enumerate}
+    \item split on whitespace;
+    \item split on whitespace and punctuation;
+    \item split into individual characters.
+\end{enumerate}
+
+\textbf{Solution sketch.}
+\begin{enumerate}
+    \item Whitespace only: $\{$\texttt{I've}, \texttt{been}, \texttt{to}, \texttt{Sfax-University;}, \texttt{it's}, \texttt{amazing!}$\}$ --- $6$ tokens. Punctuation glued to words; ``I've'' is a single token.
+    \item Whitespace and punctuation: $\{$\texttt{I}, \texttt{'ve}, \texttt{been}, \texttt{to}, \texttt{Sfax}, \texttt{-}, \texttt{University}, \texttt{;}, \texttt{it}, \texttt{'s}, \texttt{amazing}, \texttt{!}$\}$ --- $12$ tokens. The contraction \emph{I've} is split, but so is the legitimate compound \emph{Sfax-University}.
+    \item Characters: $35$ tokens. Punctuation, capitalisation and spaces are all preserved, but every word is fragmented; the model would have to relearn ``what is a word'' from data.
+\end{enumerate}
+Each policy entails a trade-off between vocabulary size and information preserved. There is no universally correct answer; the choice is engineering, guided by the downstream task and the language being modelled.
+
+\subsection{Definition and the tokenization pipeline}
+
+\begin{definition}[Tokenization]
+\textbf{Tokenization} is the process of converting a raw text string into an ordered sequence of discrete units called \textbf{tokens}, drawn from a finite inventory called the \textbf{vocabulary} $V$.
+\end{definition}
+
+\begin{definition}[Numericalization]
+\textbf{Numericalization} is the bijective mapping $V \leftrightarrow \{0, 1, \dots, |V|-1\}$ that assigns each token an integer identifier.
+\end{definition}
+
+The full pipeline is: \emph{raw text} $\to$ tokens $\to$ token IDs $\to$ tensor inputs to a model. Every NLP system is built on top of these three trivially simple but practically critical steps.
+
+\subsection{Three levels of granularity}
+
+\begin{center}
+\begin{tabular}{|l|l|l|l|}
+\hline
+\textbf{Level} & \textbf{Vocabulary size} & \textbf{Sequence length} & \textbf{OOV behaviour} \\
+\hline
+Word & Very large ($10^5$--$10^6$) & Short & Unknown words become \texttt{[UNK]} \\
+Character & Tiny ($\sim 100$) & Very long & No OOV (any character is in $V$) \\
+Sub-word & Moderate ($10^4$--$10^5$) & Moderate & Robust: any word splits into known pieces \\
+\hline
+\end{tabular}
+\end{center}
+
+\paragraph{Word tokenization.}
+The intuitive default. Tokens are entire words separated by whitespace and punctuation rules. Strengths: each token carries lexical meaning, and downstream models converge faster on a small annotated dataset. Weaknesses: vocabulary explodes for morphologically rich languages (\emph{Arabic, Turkish, Finnish}); typos and rare words become \texttt{[UNK]}; cannot generalise across morphological variants (\emph{run / runs / running} are three unrelated tokens).
+
+\paragraph{Character tokenization.}
+Each character is a token. Strengths: vocabulary is bounded and stable across languages; no out-of-vocabulary problem (any unseen word becomes a sequence of known characters). Weaknesses: sequences become $5$--$10\times$ longer, increasing both memory and compute; the model must learn from scratch which character sequences form meaningful units.
+
+\paragraph{Sub-word tokenization.}
+The dominant choice in 2020s NLP. Vocabulary contains \emph{frequent words as wholes} and \emph{rare words split into meaningful pieces}. The split is learnt from data using algorithms such as Byte-Pair Encoding (BPE), WordPiece (BERT) and SentencePiece (XLM-R, T5). Sub-word tokenization combines the strengths of word-level (semantic units for common words) and character-level (no OOV) approaches.
+
+\subsection{Pre-processing operations}
+
+Tokenization is often combined with ad-hoc transformations that modify or normalise the input string before splitting.
+
+\begin{itemize}
+    \item \textbf{Lowercasing}: ``Apple'' and ``apple'' become equivalent. Useful for spelling-insensitive tasks but destroys signal in NER (a capitalised \emph{Apple} is more likely the company).
+    \item \textbf{Punctuation removal}: simplifies vocabulary but loses sentence boundaries.
+    \item \textbf{Stop-word removal}: discard high-frequency words (\emph{the, of, in}) that carry little task-specific information. Useful for keyword search; harmful for syntax-sensitive tasks.
+    \item \textbf{Stemming}: chop morphological suffixes by hand-coded rules (Porter, Snowball). \emph{running} $\to$ \emph{run}. Fast but linguistically crude.
+    \item \textbf{Lemmatization}: map a word to its dictionary form using a morphological analyser. \emph{better} $\to$ \emph{good}. Slower but linguistically principled.
+\end{itemize}
+
+\begin{remark}
+Modern large language models perform little or no manual pre-processing: they are trained on raw text with sub-word tokenization, and the model itself learns whatever normalisations it needs. Heavy pre-processing is typical of statistical-era pipelines and remains useful for small-data, classical-ML systems.
+\end{remark}
+
+\subsection{Byte-Pair Encoding (BPE) in detail}
+
+BPE is the simplest sub-word algorithm and the workhorse of GPT-2, GPT-3, GPT-4, RoBERTa, and many others. It iteratively merges the most frequent pair of adjacent symbols.
+
+\paragraph{Algorithm.}
+\begin{enumerate}
+    \item Start with a vocabulary that contains every individual character of the corpus.
+    \item Treat each word as a sequence of characters with an end-of-word marker.
+    \item Count the frequency of every adjacent symbol pair across the corpus.
+    \item Merge the most frequent pair into a new symbol; add it to the vocabulary.
+    \item Repeat steps 3--4 until a target vocabulary size is reached.
+\end{enumerate}
+
+\begin{example}[A miniature BPE run]
+Suppose the corpus consists of the words \texttt{low}, \texttt{lower}, \texttt{newest}, \texttt{widest}, with frequencies $5, 2, 6, 3$. The initial vocabulary is $\{$\texttt{l, o, w, e, r, n, s, t, i, d}, \texttt{</w>}$\}$. Counting pairs:
+\[ \texttt{e\,s} = 6 + 3 = 9,\quad \texttt{s\,t} = 9,\quad \texttt{l\,o} = 7, \quad \texttt{o\,w} = 7, \dots \]
+The pair \texttt{e\,s} (9 occurrences) is merged first into a new symbol \texttt{es}. Recount, merge again --- now \texttt{es\,t} (9 occurrences) into \texttt{est}. Continue: \texttt{lo}, \texttt{low}, \texttt{ne}, \texttt{new}, \dots\ After enough merges, frequent words like \texttt{low</w>} become single tokens, while rare words remain decomposed. A new word like \texttt{lowest} is then tokenized as \texttt{low + est}, even though it never appeared in training.
+\end{example}
+
+\paragraph{Why BPE works.} The algorithm provides a natural rate--distortion trade-off. As vocabulary grows, the average sequence length shrinks, but the ``unit cost'' per token increases (each token carries more information). Empirically, vocabularies of $30$k--$100$k sub-words give an excellent trade-off across many languages.
+
+\subsection{Multilingual and dialectal challenges}
+
+Tokenization choices that are adequate for English may fail for other languages.
+
+\begin{itemize}
+    \item \textbf{Whitespace-free scripts.} Chinese, Japanese, Thai write without spaces. Word tokenization requires segmentation algorithms (e.g.\ Jieba, MeCab).
+    \item \textbf{Morphologically rich languages.} Arabic and Turkish concatenate prefixes and suffixes onto a stem, generating very large surface-form inventories. Sub-word tokenization is essential.
+    \item \textbf{Code-switching and dialects.} Tunisian Arabic frequently mixes Modern Standard Arabic, French, and Latin-script transliterations (``arabizi''). A general-purpose multilingual tokenizer (e.g.\ XLM-R's SentencePiece) is recommended over single-language tokenizers.
+    \item \textbf{Right-to-left scripts.} Display order and logical order can differ; numerical IDs operate on logical order, but evaluation tools must be aware of the visual rendering.
+\end{itemize}
+
+\subsection{Worked examples}
+
+\textbf{Example 1 (Granularity choice --- Easy).}
+You are training a classifier on $1000$ short SMS messages, mostly in English with frequent typos. Which tokenization granularity is most appropriate, and why?
+
+\textit{Solution.} Sub-word tokenization. Word-level would suffer from OOV (typos produce never-seen surface forms); character-level would lengthen sequences and dilute the signal in a small dataset. Sub-word splits typos into recognised pieces (\texttt{hapy} $\to$ \texttt{ha + py}) without exploding the vocabulary.
+
+\medskip
+
+\textbf{Example 2 (BPE iteration --- Medium).}
+Apply two iterations of BPE to the toy corpus $\{\texttt{aaab}, \texttt{aabb}, \texttt{abab}\}$ (each of frequency $1$). Show the resulting vocabulary after each merge.
+
+\textit{Solution.} Initial vocabulary: $\{\texttt{a}, \texttt{b}\}$.
+
+Iteration 1: count pairs --- \texttt{a\,a} appears in \texttt{aaab} (twice) and \texttt{aabb} (once) and \texttt{abab} (zero) $= 3$; \texttt{a\,b} appears in \texttt{aaab} (once) and \texttt{aabb} (once) and \texttt{abab} (twice) $= 4$; \texttt{b\,a} appears once (in \texttt{abab}); \texttt{b\,b} once.
+Most frequent: \texttt{a\,b} (4). Merge into \texttt{ab}. Vocabulary: $\{\texttt{a}, \texttt{b}, \texttt{ab}\}$. Re-tokenization: \texttt{aaab} $\to$ \texttt{a\,a\,ab}; \texttt{aabb} $\to$ \texttt{a\,ab\,b}; \texttt{abab} $\to$ \texttt{ab\,ab}.
+
+Iteration 2: count new pairs --- \texttt{a\,a} (in \texttt{aaab}, once) $= 1$; \texttt{a\,ab} (in \texttt{aaab} and \texttt{aabb}) $= 2$; \texttt{ab\,b} (in \texttt{aabb}) $= 1$; \texttt{ab\,ab} (in \texttt{abab}) $= 1$.
+Most frequent: \texttt{a\,ab} (2). Merge into \texttt{aab}. Vocabulary: $\{\texttt{a}, \texttt{b}, \texttt{ab}, \texttt{aab}\}$.
+
+\medskip
+
+\textbf{Example 3 (Tokenizer mismatch --- Hard).}
+A pretrained English BERT tokenizer applied to Tunisian Arabic in Latin script (``arabizi'') splits the word \texttt{n7ebek} (``I love you'') as \texttt{[n, \#\#7, \#\#e, \#\#bek]}. Discuss the consequences for a downstream classifier and propose two remediation strategies.
+
+\textit{Solution.}
+\begin{itemize}
+    \item \textbf{Consequences.} The numeric digit \texttt{7} (which substitutes for the Arabic letter \emph{`}) is treated as foreign; the model sees an unfamiliar pattern with no semantic anchoring. The classifier's representation of the word will be near-random, and its predictions for sentences containing arabizi will be poor.
+    \item \textbf{Remediations.}
+    \begin{enumerate}
+        \item Use a multilingual tokenizer (e.g.\ \texttt{xlm-roberta-base}'s SentencePiece) trained on much broader data including Latin-script Arabic.
+        \item Train a domain-specific tokenizer on a Tunisian-Arabic corpus before fine-tuning the model. The merges will then capture frequent dialectal sub-words natively.
+    \end{enumerate}
+\end{itemize}
+
+\subsection{Python snippet: comparing tokenizers}
+
+\begin{lstlisting}
+# pip install nltk transformers
+import nltk
+from transformers import AutoTokenizer
+
+text = "I've been to Sfax-University; it's amazing!"
+
+# Word-level (NLTK)
+nltk.download('punkt_tab', quiet=True)
+print("Word tokens (NLTK):", nltk.word_tokenize(text))
+
+# Sub-word (BERT WordPiece)
+bert = AutoTokenizer.from_pretrained("bert-base-uncased")
+print("BERT sub-word tokens:", bert.tokenize(text))
+
+# Sub-word (GPT-2 byte-level BPE)
+gpt2 = AutoTokenizer.from_pretrained("gpt2")
+print("GPT-2 BPE tokens:    ", gpt2.tokenize(text))
+\end{lstlisting}
+
+The same input produces different tokenisations under different algorithms. Reading the tokenized output is the first debugging step when a model behaves unexpectedly.
+
+\subsection{Exercises}
+\begin{enumerate}
+    \item For each scenario, recommend a tokenization granularity (word / character / sub-word) and justify briefly:
+    \begin{enumerate}
+        \item Building a spelling corrector for French SMS;
+        \item Training a sentiment classifier on $50$ million Web reviews;
+        \item Building a name-entity recognizer for German legal documents.
+    \end{enumerate}
+    \item Explain in one paragraph why character-level tokenization, despite its $|V| \approx 100$, has \emph{not} replaced sub-word tokenization in modern LLMs.
+    \item Tokenize the sentence ``\emph{The CEOs' meeting was rescheduled.}'' with two different policies (whitespace+punctuation, and a sub-word tokenizer of your choice). Comment on the differences for the words \emph{CEOs'} and \emph{rescheduled}.
+    \item Carry out three iterations of BPE on the toy corpus $\{\texttt{xay}, \texttt{xay}, \texttt{yax}, \texttt{xy}\}$ where each word has frequency $1$. List the new vocabulary at each step.
+    \item (Synthesis.) For a multilingual Tunisian dialect dataset (mixing Arabic script, Latin-script arabizi, and French), discuss the trade-offs between (i) using a single multilingual sub-word tokenizer (e.g.\ XLM-R), (ii) training a domain-specific tokenizer on the dataset, and (iii) using language-specific tokenizers for each script and merging the outputs.
+\end{enumerate}
+
+\section{Sparse representations: Bag-of-Words and TF--IDF}
+\label{sec:sparse}
+
+\subsection{Motivation}
+After tokenization, a text is a sequence of integer IDs. To feed such a sequence to a classical machine-learning algorithm --- logistic regression, $k$-nearest-neighbours, support-vector machine --- we need a \emph{fixed-size vector} representation that does not depend on document length. The simplest such representation is the \textbf{Bag-of-Words} (BoW), which counts how often each vocabulary item appears. BoW and its weighted refinement \textbf{TF--IDF} dominated information retrieval and text classification for two decades; they remain strong baselines, fast to compute, easy to debug, and competitive on small or domain-specific data sets.
+
+\subsection{Approach by problem: are these two reviews similar?}
+\textbf{Problem.} Compare the following two hotel reviews:
+\begin{itemize}
+    \item $d_1$: ``\emph{The room was clean. The room was quiet.}''
+    \item $d_2$: ``\emph{The breakfast was great. The room was clean.}''
+\end{itemize}
+Propose a numerical representation for each that lets us measure their similarity, ignoring word order.
+
+\textbf{Solution sketch.} Build a vocabulary by collecting all distinct words: $V = \{\text{the, room, was, clean, quiet, breakfast, great}\}$ (size $7$). For each document, count how often each vocabulary word appears:
+\[ \mathbf{x}_{d_1} = (2, 2, 2, 1, 1, 0, 0)^\top, \quad \mathbf{x}_{d_2} = (2, 1, 2, 1, 0, 1, 1)^\top. \]
+The two vectors share many components (e.g.\ both contain ``the'', ``room'', ``was'', ``clean'') and differ on others (\emph{quiet} only in $d_1$, \emph{breakfast / great} only in $d_2$). Their dot product gives a coarse measure of similarity. This embarrassingly simple recipe is the starting point of all classical NLP.
+
+\subsection{Vector space models}
+
+\begin{definition}[Vector space model]
+A \textbf{vector space model} (VSM) of a corpus is an embedding $\phi : \mathcal{T} \to \mathbb{R}^d$, where $\mathcal{T}$ is the set of textual objects (words or documents) and $d$ is the embedding dimension. Documents are represented as vectors so that geometric operations (dot product, cosine similarity, distance) translate into linguistic operations (similarity, retrieval, clustering).
+\end{definition}
+
+\subsection{Bag-of-Words}
+
+\begin{definition}[Bag-of-Words representation]
+Fix a vocabulary $V = \{w_1, w_2, \dots, w_{|V|}\}$. The \textbf{Bag-of-Words} (BoW) representation of a document $d$ is the vector
+\[ \phi_{\text{BoW}}(d) = \big(\mathrm{tf}(w_1, d),\ \mathrm{tf}(w_2, d),\ \dots,\ \mathrm{tf}(w_{|V|}, d)\big) \in \mathbb{R}^{|V|}, \]
+where $\mathrm{tf}(w, d)$ is the \emph{term frequency} (raw count) of word $w$ in $d$. The representation is named ``bag'' because the order of words is discarded: the document is treated as a multiset.
+\end{definition}
+
+\paragraph{Alternative weightings of $\mathrm{tf}$.}
+\begin{itemize}
+    \item \textbf{Boolean}: $\mathrm{tf}(w, d) \in \{0, 1\}$, indicating presence.
+    \item \textbf{Raw count}: $\mathrm{tf}(w, d) = $ number of occurrences.
+    \item \textbf{Log-normalized}: $\mathrm{tf}(w, d) = \log(1 + \#(w, d))$, mitigating the bias toward long documents.
+    \item \textbf{Length-normalized}: divide raw counts by document length so that all documents have $\ell_1$-norm $1$.
+\end{itemize}
+
+\subsection{The document--term matrix}
+
+\begin{definition}[Document--term matrix]
+Given a corpus $\{d_1, \dots, d_N\}$ and a vocabulary $V$, the \textbf{document--term matrix} is the matrix $X \in \mathbb{R}^{N \times |V|}$ whose entry $X_{ij} = \mathrm{tf}(w_j, d_i)$.
+\end{definition}
+
+In practice $|V|$ is in the tens or hundreds of thousands, while only a few dozen distinct words appear in each document. The matrix is therefore extremely \emph{sparse}: a vast majority of entries are zero. Efficient storage formats (compressed sparse row, CSR; compressed sparse column, CSC) preserve memory by storing only non-zero entries.
+
+\subsection{Limitations of Bag-of-Words}
+
+\begin{itemize}
+    \item \textbf{No word order}: the documents ``\emph{Tunisia beat Egypt}'' and ``\emph{Egypt beat Tunisia}'' yield identical BoW vectors despite their opposite meanings.
+    \item \textbf{Equal weight to all words}: a function word like ``\emph{the}'' contributes the same magnitude as a domain-specific term like ``\emph{Paracetamol}'', even though the latter is far more discriminative.
+    \item \textbf{No semantic similarity}: ``\emph{cat}'' and ``\emph{kitten}'' are orthogonal vectors in $\mathbb{R}^{|V|}$ --- as far apart as ``\emph{cat}'' and ``\emph{democracy}''.
+    \item \textbf{Curse of dimensionality}: $|V| \approx 50{,}000$ produces vectors that are computationally cheap (sparse) but statistically noisy --- many features contribute marginally to any specific task.
+\end{itemize}
+
+The first two limitations are tackled in this section by TF--IDF; the third requires dense embeddings (Section~\ref{sec:dense}). The first --- the loss of order --- is fundamentally unfixable in a bag-of-words framework and is a key driver of the move to recurrent and Transformer models.
+
+\subsection{TF--IDF}
+
+The intuition is to \emph{down-weight} words that appear in many documents (because they discriminate poorly between documents) and \emph{up-weight} words that appear only in a few (because their presence is informative).
+
+\begin{definition}[Inverse document frequency]
+Given a corpus of $N$ documents, the \textbf{document frequency} of a word $w$ is the number of documents that contain $w$ at least once,
+\[ \mathrm{df}(w) = \big|\{ d \in \text{corpus} : w \in d \}\big|. \]
+The \textbf{inverse document frequency} is
+\[ \mathrm{idf}(w) = \log \frac{N}{\mathrm{df}(w)}. \]
+Common variants smooth the formula to avoid division by zero and dampen extreme values:
+\[ \mathrm{idf}_{\text{smooth}}(w) = \log\left(\frac{N + 1}{\mathrm{df}(w) + 1}\right) + 1. \]
+\end{definition}
+
+\begin{definition}[TF--IDF]
+The \textbf{TF--IDF} weight of word $w$ in document $d$ is the product
+\[ \mathrm{tfidf}(w, d) = \mathrm{tf}(w, d) \times \mathrm{idf}(w). \]
+Replacing each entry of the document--term matrix by the corresponding TF--IDF gives the TF--IDF document--term matrix.
+\end{definition}
+
+\paragraph{Intuition.}
+\begin{itemize}
+    \item Words appearing in nearly every document have $\mathrm{df}(w) \approx N$, hence $\mathrm{idf}(w) \approx \log 1 = 0$. They are zeroed out --- the same effect as stop-word removal, but data-driven.
+    \item Words appearing in few documents have $\mathrm{df}(w) \ll N$, hence large $\mathrm{idf}(w)$. They retain (and amplify) their term-frequency contribution.
+    \item Within a single document, TF--IDF still scales with raw term frequency, preserving emphasis on repeated key terms.
+\end{itemize}
+
+\begin{property}[Boundedness of $\mathrm{idf}$]
+For a corpus of $N$ documents, $0 \le \mathrm{idf}(w) \le \log N$ when $\mathrm{idf}$ uses the unsmoothed formula. The maximum is reached when $w$ appears in exactly one document, the minimum when $w$ appears in all of them.
+\end{property}
+
+\subsection{TF--IDF as a probabilistic measure}
+
+\begin{remark}[Information-theoretic flavour]
+$\mathrm{idf}(w) = -\log \frac{\mathrm{df}(w)}{N}$ is the negative log-probability that a randomly chosen document contains the word $w$. A rare word ``surprises'' us when it appears, contributing many bits of information; a common word contributes few. This is a discrete analogue of pointwise mutual information, and the connection has been formalised: TF--IDF approximates a maximum-likelihood estimate under specific generative assumptions.
+\end{remark}
+
+\subsection{Worked examples}
+
+\textbf{Example 1 (BoW from scratch --- Easy).}
+For the two-document corpus
+\begin{itemize}
+    \item $d_1$: ``\emph{the cat sat on the mat}''
+    \item $d_2$: ``\emph{the cat ate the fish}''
+\end{itemize}
+build the vocabulary, the document--term matrix with raw counts, and compute $\mathrm{idf}(w)$ for each word.
+
+\textit{Solution.} $V = \{\text{the, cat, sat, on, mat, ate, fish}\}$.
+\begin{center}
+\begin{tabular}{|c|ccccccc|}
+\hline
+& the & cat & sat & on & mat & ate & fish \\
+\hline
+$d_1$ & 2 & 1 & 1 & 1 & 1 & 0 & 0 \\
+$d_2$ & 2 & 1 & 0 & 0 & 0 & 1 & 1 \\
+\hline
+$\mathrm{df}$ & 2 & 2 & 1 & 1 & 1 & 1 & 1 \\
+$\mathrm{idf}$ & $\log 1=0$ & $0$ & $\log 2$ & $\log 2$ & $\log 2$ & $\log 2$ & $\log 2$ \\
+\hline
+\end{tabular}
+\end{center}
+``\emph{the}'' and ``\emph{cat}'' carry no IDF weight (they appear in every document), while \emph{sat}, \emph{on}, \emph{mat}, \emph{ate}, \emph{fish} all carry weight $\log 2 \approx 0.69$.
+
+\medskip
+
+\textbf{Example 2 (Computing TF--IDF --- Medium).}
+A four-document corpus has $\mathrm{df}(\emph{Tunisia}) = 1$ and $\mathrm{df}(\emph{the}) = 4$. Document $d_1$ contains \emph{Tunisia} once and \emph{the} four times.
+
+(a) Compute $\mathrm{tfidf}(\emph{Tunisia}, d_1)$ and $\mathrm{tfidf}(\emph{the}, d_1)$ using the unsmoothed formula.
+
+(b) Comment on the result: which word's contribution dominates the document representation?
+
+\textit{Solution.}
+$\mathrm{idf}(\emph{Tunisia}) = \log(4/1) = \log 4 \approx 1.39$. $\mathrm{idf}(\emph{the}) = \log(4/4) = 0$.
+$\mathrm{tfidf}(\emph{Tunisia}, d_1) = 1 \times 1.39 = 1.39$. $\mathrm{tfidf}(\emph{the}, d_1) = 4 \times 0 = 0$.
+The discriminative word \emph{Tunisia} dominates the representation, even though it appears only once. The function word \emph{the}, which appears four times, is silenced. This is exactly the desired behaviour: a query for \emph{Tunisia} should retrieve $d_1$, while a query for \emph{the} should not.
+
+\medskip
+
+\textbf{Example 3 (Spam filtering with TF--IDF --- Hard).}
+Consider a spam-filtering corpus. The word \emph{lottery} appears in $50$ out of $5{,}000$ training emails, all of which are spam. The word \emph{meeting} appears in $1{,}200$ emails, half spam, half legitimate. Argue, using TF--IDF and the discriminative power of each feature, why a logistic-regression classifier built on TF--IDF features will give a much larger weight to \emph{lottery} than to \emph{meeting}.
+
+\textit{Solution.} The IDF of \emph{lottery} is $\log(5000/50) = \log 100 \approx 4.6$, while the IDF of \emph{meeting} is $\log(5000/1200) \approx 1.4$. Already, after the IDF re-weighting, \emph{lottery} contributes more to the representation than \emph{meeting} per occurrence. Logistic regression then assigns weights to maximise log-likelihood; \emph{lottery} is correlated with the spam label with probability $1$, while \emph{meeting} is correlated with the spam label with probability $0.5$. The resulting weight on \emph{lottery} reflects both the higher IDF amplification and the stronger label correlation. The classifier is therefore much more sensitive to the word \emph{lottery} when scoring a new e-mail.
+
+\subsection{Python snippet: from text to TF--IDF in 5 lines}
+
+\begin{lstlisting}
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+
+corpus = [
+    "the room was clean the room was quiet",
+    "the breakfast was great the room was clean",
+    "service was slow but the rooms were clean",
+]
+
+# Step 1 : raw counts
+counts = CountVectorizer().fit_transform(corpus)
+print("Raw counts shape:", counts.shape)
+print("Raw counts dense:\n", counts.toarray())
+
+# Step 2 : TF-IDF transform
+tfidf = TfidfVectorizer().fit(corpus)
+X = tfidf.transform(corpus)
+print("\nVocabulary:", tfidf.get_feature_names_out())
+print("TF-IDF matrix:\n", X.toarray().round(2))
+
+# Inspect the IDF of each token
+for term, score in zip(tfidf.get_feature_names_out(), tfidf.idf_):
+    print(f"  idf('{term}') = {score:.3f}")
+\end{lstlisting}
+
+\subsection{Exercises}
+\begin{enumerate}
+    \item Build the BoW vocabulary, the document--term matrix, the IDF vector and the full TF--IDF matrix (smoothed) for the corpus
+    \begin{itemize}
+        \item $d_1$: ``\emph{NLP is fun and useful}''
+        \item $d_2$: ``\emph{Tunisia is a country in North Africa}''
+        \item $d_3$: ``\emph{NLP is widely used in Tunisia}''
+    \end{itemize}
+    \item Show that for a corpus of $N$ documents, the maximum possible IDF (unsmoothed) is $\log N$ and is reached when a word appears in exactly one document. Conversely, show that words appearing in every document have $\mathrm{idf}(w) = 0$ and contribute zero TF--IDF weight.
+    \item Two documents, $d_1$ and $d_2$, share exactly the same set of words but with different counts. Are their BoW vectors necessarily different? Are their normalised BoW vectors (length-normalised) necessarily different?
+    \item TF--IDF is purely lexical and shares no information across morphological variants (\emph{run} and \emph{running} are unrelated columns of the document--term matrix). Propose two engineering remedies (one classical, one modern) and one situation in which each is preferable.
+    \item (Open-ended.) Suppose you must build a search engine over a corpus of $100{,}000$ Tunisian-Arabic news articles. Discuss whether you would prefer a TF--IDF index, a dense-vector index (Section~\ref{sec:dense}), or a hybrid of the two. Identify a concrete query that one method handles but not the other.
+\end{enumerate}
+
+\section{Dense representations: Word2Vec, GloVe, FastText}
+\label{sec:dense}
+
+\subsection{Motivation}
+Sparse Bag-of-Words and TF--IDF representations encode lexical presence but not \emph{meaning}. To a sparse model, the vectors of \emph{cat} and \emph{kitten} are orthogonal --- as unrelated as \emph{cat} and \emph{democracy}. This severely limits generalisation: a classifier trained on documents containing \emph{cat} cannot directly transfer its decision to documents containing \emph{kitten}, even though the two words mean almost the same thing. \emph{Dense word embeddings} solve this problem by mapping every word to a low-dimensional real-valued vector such that semantically similar words receive similar vectors. The idea, in a single line: \emph{a word's meaning is determined by the company it keeps}.
+
+\subsection{Approach by problem: where does meaning live?}
+\textbf{Problem.} Given a corpus of one billion English sentences, how could you produce, without any human annotation, a 300-dimensional vector for each English word such that synonyms end up close together?
+
+\textbf{Solution sketch.} Read the corpus and count, for every pair of words $(w, c)$, how often they co-occur within a small context window. Words that share many contexts (\emph{cat / kitten} both appear near \emph{purr, fur, meow, pet}) will have similar count profiles. Reduce these high-dimensional count vectors to a low-dimensional latent space (e.g.\ via matrix factorization), and similar words will project to nearby points. The full algorithm refines this idea, but the core insight is captured by a single principle from mid-20th-century linguistics.
+
+\subsection{The distributional hypothesis}
+
+\begin{definition}[Distributional hypothesis, Harris 1954, Firth 1957]
+The semantic similarity of two words is well approximated by the similarity of their typical \emph{contexts}. Formally, if $C(w)$ denotes the multiset of words appearing within a fixed-size window of $w$ across a corpus, then
+\[ \mathrm{sim}_{\text{semantic}}(w_1, w_2) \approx \mathrm{sim}_{\text{distributional}}(C(w_1), C(w_2)). \]
+\end{definition}
+
+This empirical hypothesis has held up remarkably well: every modern word-embedding algorithm is, at root, a way to operationalise it.
+
+\subsection{Word2Vec}
+
+Mikolov et al.\ (2013) introduced two shallow neural architectures that learn dense word vectors from raw text. Each word $w$ is associated with two vectors: a \emph{centre vector} $\mathbf{v}_w \in \mathbb{R}^d$ and a \emph{context vector} $\mathbf{u}_w \in \mathbb{R}^d$, both stored in lookup tables and updated by gradient descent.
+
+\paragraph{Skip-gram.} Given a centre word, predict the surrounding context words. Formally, for a corpus tokenized as $w_1, w_2, \dots, w_T$ and a context window of size $m$,
+\[ \mathcal{L}_{\text{skip-gram}} = -\frac{1}{T}\sum_{t=1}^{T}\sum_{\substack{-m \le j \le m \\ j \neq 0}} \log P(w_{t+j} \mid w_t), \]
+with the conditional modelled as a softmax:
+\[ P(c \mid w) = \frac{\exp(\mathbf{u}_c^\top \mathbf{v}_w)}{\sum_{c' \in V} \exp(\mathbf{u}_{c'}^\top \mathbf{v}_w)}. \]
+
+\paragraph{CBOW (Continuous Bag-of-Words).} Symmetric: predict the centre word from the average of context vectors. Faster to train but slightly less accurate on rare words.
+
+\paragraph{Negative sampling.} Computing the softmax over the entire vocabulary is too expensive when $|V| \sim 10^6$. The trick is to replace it with a binary classification: for each true context pair $(w, c)$, draw $k$ ``noise'' words $\tilde{c}_1, \dots, \tilde{c}_k$ from a unigram distribution and minimise
+\[ -\log \sigma(\mathbf{u}_c^\top \mathbf{v}_w) - \sum_{i=1}^{k} \log \sigma(-\mathbf{u}_{\tilde{c}_i}^\top \mathbf{v}_w). \]
+This is a discriminative surrogate for the original generative loss; empirically, $k = 5$--$15$ is sufficient for high-quality embeddings.
+
+\subsection{GloVe}
+
+Pennington et al.\ (2014) take a complementary route: factor the global word--context co-occurrence matrix instead of training on local windows.
+
+\paragraph{Setup.} Let $X \in \mathbb{R}^{|V| \times |V|}$ be the matrix whose entry $X_{ij}$ counts how often word $j$ appears in the context of word $i$. The aim is to find vectors $\mathbf{v}_i, \mathbf{u}_j \in \mathbb{R}^d$ and biases $b_i, c_j$ such that
+\[ \mathbf{v}_i^\top \mathbf{u}_j + b_i + c_j \approx \log X_{ij}. \]
+The factorization minimises a weighted least-squares objective:
+\[ \mathcal{L}_{\text{GloVe}} = \sum_{i, j} f(X_{ij}) \big( \mathbf{v}_i^\top \mathbf{u}_j + b_i + c_j - \log X_{ij} \big)^2, \]
+where $f$ is a weighting function that down-weights very rare and very frequent co-occurrences.
+
+\paragraph{Skip-gram and GloVe are dual.} Levy and Goldberg (2014) showed that skip-gram with negative sampling implicitly factors a shifted pointwise mutual information matrix,
+\[ \mathbf{v}_w^\top \mathbf{u}_c \approx \log \frac{P(w, c)}{P(w) P(c)} - \log k, \]
+where $k$ is the number of negative samples. The two algorithms thus solve closely related optimisation problems with different objectives and weightings; they typically yield comparable embedding quality.
+
+\subsection{FastText}
+
+Bojanowski et al.\ (2017) extend Word2Vec by embedding \emph{sub-word units} rather than entire words. A word is represented as the sum of vectors of its character $n$-grams (with $n = 3, 4, 5, 6$):
+\[ \mathbf{v}_{\text{word}} = \sum_{g \in \mathcal{G}_{\text{word}}} \mathbf{v}_g. \]
+Two consequences:
+\begin{itemize}
+    \item \textbf{No more OOV.} Any unseen word can be embedded as a sum of its $n$-gram vectors --- including misspellings, neologisms, and morphological variants.
+    \item \textbf{Better for morphologically rich languages.} The vectors of \emph{run, runs, running} share most of their $n$-grams, so the model captures morphological similarity automatically. This is especially valuable for Arabic, Turkish, Finnish, and dialectal varieties.
+\end{itemize}
+
+\subsection{Vector arithmetic and the analogy task}
+
+A striking empirical property of dense embeddings is that they encode semantic relations \emph{linearly}.
+
+\begin{property}[Word analogies]
+For high-quality embeddings, relational analogies of the form
+\begin{quote}
+\emph{$A$ is to $B$ as $C$ is to $D$}
+\end{quote}
+are often captured by
+\[ \mathbf{v}_B - \mathbf{v}_A + \mathbf{v}_C \approx \mathbf{v}_D, \]
+in the sense that the nearest neighbour of $\mathbf{v}_B - \mathbf{v}_A + \mathbf{v}_C$ in the embedding space (excluding $A, B, C$ themselves) is $D$.
+\end{property}
+
+\paragraph{Examples.}
+\begin{itemize}
+    \item Gender: $\overrightarrow{\text{king}} - \overrightarrow{\text{man}} + \overrightarrow{\text{woman}} \approx \overrightarrow{\text{queen}}$.
+    \item Country--capital: $\overrightarrow{\text{Tunis}} - \overrightarrow{\text{Tunisia}} + \overrightarrow{\text{France}} \approx \overrightarrow{\text{Paris}}$.
+    \item Verb tense: $\overrightarrow{\text{walked}} - \overrightarrow{\text{walking}} + \overrightarrow{\text{running}} \approx \overrightarrow{\text{ran}}$.
+\end{itemize}
+
+The analogy task became the dominant intrinsic-evaluation benchmark for word embeddings throughout the mid-2010s.
+
+\subsection{Limitations: static, monolingual, biased}
+
+\begin{itemize}
+    \item \textbf{Static.} Each word receives one vector regardless of context. The polysemous word \emph{bank} has a single embedding that mixes its financial and riverside senses --- useful as an average, useless for disambiguation. Section~\ref{sec:contextual-preview} previews the contextual fix.
+    \item \textbf{Monolingual.} Word2Vec / GloVe / FastText vectors are trained on a single language. Cross-lingual alignment requires extra mechanisms.
+    \item \textbf{Biases inherited from the training corpus.} The data is the model. If the corpus encodes social biases, the embeddings inherit them: $\overrightarrow{\text{nurse}}$ may end up closer to $\overrightarrow{\text{woman}}$ than to $\overrightarrow{\text{man}}$, with measurable downstream consequences. A growing body of literature studies and mitigates these effects.
+\end{itemize}
+
+\subsection{Toward contextual embeddings}
+\label{sec:contextual-preview}
+
+Static embeddings give one vector per word type. Modern Transformer encoders (BERT, RoBERTa, $\dots$) instead produce one vector per word \emph{token in context}: the same word \emph{bank} receives different vectors when it appears in ``\emph{the bank approved my loan}'' and in ``\emph{we sat on the bank of the river}''. Contextualisation is the topic of Part~2 of this course; for now, treat static embeddings as the entry point and the conceptual ancestor.
+
+\subsection{Worked examples}
+
+\textbf{Example 1 (Distributional similarity --- Easy).}
+In a small corpus, the words \emph{cat} and \emph{dog} both frequently co-occur with \emph{pet}, \emph{food}, \emph{bowl}, while \emph{democracy} co-occurs with \emph{election}, \emph{vote}, \emph{government}. Justify intuitively why a word-embedding algorithm will place $\overrightarrow{\text{cat}}$ closer to $\overrightarrow{\text{dog}}$ than to $\overrightarrow{\text{democracy}}$.
+
+\textit{Solution.} The distributional hypothesis predicts that words with similar context distributions are placed close in embedding space. The algorithms operationalise this by training each word's vector to be predictive of (or compatible with) its observed contexts. Since \emph{cat} and \emph{dog} have similar context distributions, their vectors will be similar; \emph{democracy}'s contexts are nearly disjoint, so its vector will be far from both.
+
+\medskip
+
+\textbf{Example 2 (Skip-gram softmax explicit --- Medium).}
+A toy vocabulary contains only $\{$\emph{cat}, \emph{dog}, \emph{the}$\}$, with embeddings $\mathbf{v}_{\text{cat}} = (1, 0)$, $\mathbf{v}_{\text{dog}} = (0.9, 0.1)$, $\mathbf{v}_{\text{the}} = (0, 1)$ and context vectors $\mathbf{u}_w = \mathbf{v}_w$ for simplicity. Compute $P(\emph{dog} \mid \emph{cat})$ under the skip-gram softmax.
+
+\textit{Solution.}
+The dot products are $\mathbf{u}_{\text{cat}}^\top \mathbf{v}_{\text{cat}} = 1$, $\mathbf{u}_{\text{dog}}^\top \mathbf{v}_{\text{cat}} = 0.9$, $\mathbf{u}_{\text{the}}^\top \mathbf{v}_{\text{cat}} = 0$.
+\[ P(\emph{dog} \mid \emph{cat}) = \frac{e^{0.9}}{e^{1} + e^{0.9} + e^{0}} = \frac{2.46}{2.72 + 2.46 + 1} \approx \frac{2.46}{6.18} \approx 0.398. \]
+The model assigns $\sim 40\%$ of its conditional mass to \emph{dog} (close to but slightly less than \emph{cat} itself, which would self-predict with $\sim 44\%$).
+
+\medskip
+
+\textbf{Example 3 (FastText for Tunisian Arabic --- Hard).}
+The Tunisian-Arabic verb \emph{n7eb} (``I love'') is unlikely to appear in a generic Arabic corpus, but its sub-word components (\emph{n}, \emph{7}, \emph{he}, \emph{eb}, $\dots$) appear frequently in dialectal text. Argue why FastText would handle this word more robustly than Word2Vec, and write the formula for its vector.
+
+\textit{Solution.} Word2Vec treats \emph{n7eb} as a single, unseen token: at inference, the lookup is undefined and the model falls back to a default \texttt{[UNK]} vector. FastText instead computes
+\[ \mathbf{v}_{\emph{n7eb}} = \sum_{g \in \mathcal{G}(\emph{n7eb})} \mathbf{v}_g, \]
+where $\mathcal{G}(\emph{n7eb})$ is the set of character $n$-grams of \emph{n7eb} (with sentinels): for $n = 3$, $\mathcal{G} = \{\texttt{<n7}, \texttt{n7e}, \texttt{7eb}, \texttt{eb>}, \dots\}$. Each $n$-gram has been seen and embedded during training; their sum is a valid embedding even though the whole word is novel. The resulting vector encodes morphological and orthographic similarity to other dialectal verb forms, making downstream tasks (sentiment, NER) significantly more robust.
+
+\subsection{Python snippet: train and explore Word2Vec}
+
+\begin{lstlisting}
+# pip install gensim
+from gensim.models import Word2Vec
+
+corpus = [
+    "the cat sat on the mat".split(),
+    "a kitten sleeps on the couch".split(),
+    "dogs and cats are common pets".split(),
+    "Tunisia is a country in north africa".split(),
+    "Tunis is the capital of Tunisia".split(),
+    "Paris is the capital of France".split(),
+]
+
+model = Word2Vec(
+    sentences=corpus, vector_size=50, window=2,
+    min_count=1, sg=1, negative=5, epochs=200,
+)
+
+print("vec(cat) =", model.wv["cat"][:5], "...")
+print("Most similar to 'cat':")
+for w, s in model.wv.most_similar("cat", topn=3):
+    print(f"  {w:<12s} cos-sim = {s:.3f}")
+
+# Analogy: Tunis - Tunisia + France ~= Paris
+analogy = model.wv.most_similar(
+    positive=["France", "Tunis"], negative=["Tunisia"], topn=3,
+)
+print("\nTunis is to Tunisia as ? is to France:")
+for w, s in analogy:
+    print(f"  {w:<12s} cos-sim = {s:.3f}")
+\end{lstlisting}
+
+The toy corpus is too small to deliver high-quality vectors, but the API is identical to a corpus of billions of tokens.
+
+\subsection{Exercises}
+\begin{enumerate}
+    \item Restate the distributional hypothesis in your own words and explain why it is an \emph{empirical} (rather than mathematical) claim. Give one sentence for which the hypothesis arguably fails.
+    \item Skip-gram and CBOW are dual training objectives. For each, argue qualitatively whether you expect better embeddings on rare or on frequent words, and why.
+    \item Show that for a uniform vocabulary distribution, the $\log P(w, c)/P(w)P(c)$ in Levy--Goldberg's analysis simplifies to $\log P(c \mid w) + \log |V|$. Comment on the consequence for the implicit objective of skip-gram.
+    \item Construct three analogy tests of your own --- one geographic, one syntactic, and one social --- and predict whether you expect a generic Word2Vec model trained on Wikipedia to solve them.
+    \item (Synthesis.) Discuss why FastText is a natural choice for a sentiment classifier on Tunisian-Arabic Twitter data, while Word2Vec is more suitable for a clean English Wikipedia corpus. Identify two distinct linguistic features of dialectal Arabic that drive this preference.
+\end{enumerate}
+
+\section{Semantic similarity measures}
+
+\subsection{Motivation}
+Once texts have been embedded in a vector space (sparse or dense), the natural way to compare them is geometric. ``How similar are these two documents?'' becomes ``How close are their vectors?''. The choice of similarity measure is far from neutral --- different measures embody different assumptions about what should count as similar. Three measures dominate practice: \textbf{cosine similarity}, \textbf{Euclidean distance}, and the \textbf{dot product}. Understanding their properties is essential for building search engines, clustering algorithms, recommender systems, and the retrieval-augmented generation pattern that sits at the heart of modern Question-Answering.
+
+\subsection{Approach by problem: ranking by similarity}
+\textbf{Problem.} You have embedded $10{,}000$ news articles as TF--IDF vectors. A user submits the short query \emph{``Tunisia football''}. Rank the articles by their relevance to the query.
+
+\textbf{Solution sketch.} Embed the query with the same vectorizer used for the corpus, obtaining a query vector $\mathbf{q} \in \mathbb{R}^{|V|}$. For each article vector $\mathbf{x}_i$, compute a similarity score and sort articles in decreasing order of score. Two issues arise:
+\begin{itemize}
+    \item Documents have very different lengths, hence very different $\ell_2$-norms. A long article will produce a large dot product simply because its vector is large, not because it is more relevant. We need a measure invariant to magnitude.
+    \item Articles in different topical zones should rank far apart even when they share many function words. The measure must give weight to direction, not magnitude.
+\end{itemize}
+Both observations point to \emph{cosine similarity}: the cosine of the angle between query and document vectors.
+
+\subsection{Three classical measures}
+
+Let $\mathbf{a}, \mathbf{b} \in \mathbb{R}^d$ be two vectors.
+
+\begin{definition}[Cosine similarity]
+\[ \cos(\mathbf{a}, \mathbf{b}) = \frac{\mathbf{a}^\top \mathbf{b}}{\|\mathbf{a}\|_2\, \|\mathbf{b}\|_2} = \frac{\sum_{i=1}^{d} a_i b_i}{\sqrt{\sum_{i=1}^{d} a_i^2}\, \sqrt{\sum_{i=1}^{d} b_i^2}}. \]
+The values lie in $[-1, +1]$ and equal $+1$ exactly when $\mathbf{b}$ is a positive scaling of $\mathbf{a}$.
+\end{definition}
+
+\begin{definition}[Dot product]
+\[ \mathbf{a}^\top \mathbf{b} = \sum_{i=1}^{d} a_i b_i. \]
+Faster to compute (no division or square roots) and equal to $\cos(\mathbf{a}, \mathbf{b}) \cdot \|\mathbf{a}\|_2 \cdot \|\mathbf{b}\|_2$. Sensitive to the magnitudes of both vectors.
+\end{definition}
+
+\begin{definition}[Euclidean distance]
+\[ d_2(\mathbf{a}, \mathbf{b}) = \|\mathbf{a} - \mathbf{b}\|_2 = \sqrt{\sum_{i=1}^{d} (a_i - b_i)^2}. \]
+Always non-negative; zero iff $\mathbf{a} = \mathbf{b}$. Sensitive to both magnitude and direction.
+\end{definition}
+
+\begin{definition}[Manhattan ($\ell_1$) distance]
+\[ d_1(\mathbf{a}, \mathbf{b}) = \|\mathbf{a} - \mathbf{b}\|_1 = \sum_{i=1}^{d} |a_i - b_i|. \]
+Used less often in NLP, but practical in high-dimensional spaces and when robustness to outliers matters.
+\end{definition}
+
+\subsection{Properties of cosine similarity}
+
+\begin{property}[Magnitude invariance]
+For any $\lambda > 0$, $\cos(\lambda \mathbf{a}, \mathbf{b}) = \cos(\mathbf{a}, \mathbf{b})$.
+\end{property}
+
+\begin{proof}
+Direct from the definition: scaling $\mathbf{a}$ by $\lambda > 0$ multiplies both numerator and denominator by $\lambda$, leaving the ratio unchanged.
+\end{proof}
+
+This single property is decisive in NLP: TF--IDF vectors of long documents are scaled-up copies of those of shorter documents on the same topic. Cosine similarity correctly considers them equivalent in topic.
+
+\begin{property}[Cosine and Euclidean for unit vectors]
+If $\|\mathbf{a}\|_2 = \|\mathbf{b}\|_2 = 1$, then
+\[ d_2(\mathbf{a}, \mathbf{b})^2 = 2 - 2 \cos(\mathbf{a}, \mathbf{b}). \]
+\end{property}
+
+\begin{proof}
+$d_2(\mathbf{a}, \mathbf{b})^2 = \|\mathbf{a}\|^2 - 2 \mathbf{a}^\top \mathbf{b} + \|\mathbf{b}\|^2 = 1 - 2 \mathbf{a}^\top \mathbf{b} + 1 = 2(1 - \cos(\mathbf{a}, \mathbf{b}))$ since the vectors are unit-norm.
+\end{proof}
+
+\begin{remark}
+Property 2.4.2 means that, after $\ell_2$-normalisation, ranking by cosine and ranking by Euclidean distance are equivalent (one is a monotonic function of the other). Practical libraries exploit this: they store $\ell_2$-normalised vectors and compute dot products, which are mathematically equivalent to cosine but considerably faster.
+\end{remark}
+
+\begin{property}[Cosine similarity is not a metric]
+$1 - \cos(\mathbf{a}, \mathbf{b})$ does not satisfy the triangle inequality and is therefore not a metric on $\mathbb{R}^d$. (After $\ell_2$-normalisation, the angular distance $\arccos(\cos(\mathbf{a}, \mathbf{b}))$ is a metric on the unit sphere.)
+\end{property}
+
+\subsection{When to use which}
+
+\begin{center}
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Measure} & \textbf{Use when} & \textbf{Avoid when} \\
+\hline
+Cosine & Comparing texts of varying length; TF--IDF; static embeddings & Magnitude carries information \\
+Dot product & Speed matters; vectors already $\ell_2$-normalised & Magnitudes are heterogeneous \\
+Euclidean & Clustering ($k$-means in normalised space); coordinates with absolute meaning & Documents have varying length and you want length-invariance \\
+Manhattan & High-dimensional vectors with outliers; robustness matters & Dense float embeddings with normal-like distributions \\
+\hline
+\end{tabular}
+\end{center}
+
+\paragraph{Rule of thumb.} For text classification or retrieval with TF--IDF or static embeddings, use cosine. For clustering with $k$-means, $\ell_2$-normalise first then use Euclidean (equivalent to spherical $k$-means).
+
+\subsection{Applications}
+
+\paragraph{Semantic search.} Embed every document; embed each incoming query; return the top-$k$ documents by cosine similarity. This pattern powers ``related articles'' widgets, web search re-ranking, and the \emph{retrieval} step of \emph{retrieval-augmented generation} (RAG) for LLMs.
+
+\paragraph{Document deduplication.} In a corpus scraped from the Web, near-duplicate documents abound. Cluster cosine-similar pairs above a threshold (e.g.\ $0.95$) and merge them.
+
+\paragraph{Recommendation.} Represent users and items in the same vector space; recommend items closest to the user's profile vector.
+
+\paragraph{Clustering.} Group documents into $k$ topics by spherical $k$-means in the embedding space.
+
+\paragraph{Cross-lingual similarity.} If embeddings are aligned across languages, an Arabic document can be matched directly to its French paraphrase by cosine similarity, without translation.
+
+\subsection{The retrieval pattern}
+
+The pattern that re-appears throughout modern NLP, including in the inner loop of RAG systems, is:
+\[ \boxed{ \text{query string} \xrightarrow[\text{embed}]{} \mathbf{q} \xrightarrow[\text{nearest neighbours}]{} \text{top-}k \text{ documents} } \]
+At scale, exact nearest-neighbour search becomes infeasible. Approximate nearest-neighbour (ANN) algorithms --- HNSW, FAISS, ScaNN, IVF-PQ --- trade a small loss in precision for a $10$--$100\times$ speed-up. We will use FAISS in the lab for a Tunisian-news search engine.
+
+\subsection{Worked examples}
+
+\textbf{Example 1 (Cosine vs dot product on length --- Easy).}
+Two TF--IDF vectors on a vocabulary of $\{\emph{Tunisia, Tunis, beach, food}\}$ are
+\[ \mathbf{a} = (1, 1, 0, 0)^\top, \quad \mathbf{b} = (3, 3, 0, 0)^\top. \]
+Compute the cosine similarity and the dot product. Comment.
+
+\textit{Solution.}
+\[ \mathbf{a}^\top \mathbf{b} = 3 + 3 = 6, \quad \|\mathbf{a}\| = \sqrt{2}, \quad \|\mathbf{b}\| = \sqrt{18} = 3\sqrt{2}. \]
+\[ \cos(\mathbf{a}, \mathbf{b}) = \frac{6}{\sqrt{2} \cdot 3\sqrt{2}} = \frac{6}{6} = 1. \]
+The dot product is $6$, but cosine is $1$ --- the two vectors are scalar multiples and therefore identical in direction. Cosine correctly recognises that they encode the same topic distribution; the dot product, sensitive to magnitude, would mislead a length-sensitive ranker.
+
+\medskip
+
+\textbf{Example 2 (Ranking by similarity --- Medium).}
+A query $\mathbf{q} = (1, 1, 0, 0)^\top$ is compared against three document vectors:
+\[ \mathbf{d}_1 = (1, 1, 1, 0)^\top, \quad \mathbf{d}_2 = (2, 0, 0, 0)^\top, \quad \mathbf{d}_3 = (1, 1, 1, 1)^\top. \]
+Rank the documents by cosine similarity to $\mathbf{q}$.
+
+\textit{Solution.}
+$\|\mathbf{q}\| = \sqrt{2}$, $\|\mathbf{d}_1\| = \sqrt{3}$, $\|\mathbf{d}_2\| = 2$, $\|\mathbf{d}_3\| = 2$.
+$\mathbf{q}^\top \mathbf{d}_1 = 2$, $\mathbf{q}^\top \mathbf{d}_2 = 2$, $\mathbf{q}^\top \mathbf{d}_3 = 2$.
+\[ \cos(\mathbf{q}, \mathbf{d}_1) = 2/(\sqrt{2}\sqrt{3}) \approx 0.816, \quad \cos(\mathbf{q}, \mathbf{d}_2) = 2/(\sqrt{2}\cdot 2) = 1/\sqrt{2} \approx 0.707, \]
+\[ \cos(\mathbf{q}, \mathbf{d}_3) = 2/(\sqrt{2} \cdot 2) \approx 0.707. \]
+Ranking: $\mathbf{d}_1 \succ \mathbf{d}_2 \approx \mathbf{d}_3$.
+$\mathbf{d}_1$ is closest to $\mathbf{q}$ because both query terms appear and the document is short. $\mathbf{d}_2$ overweights one term; $\mathbf{d}_3$ contains both query terms but also two off-topic ones, diluting the cosine.
+
+\medskip
+
+\textbf{Example 3 (Cosine vs Euclidean for clustering --- Hard).}
+Argue why $k$-means clustering in TF--IDF space typically requires \emph{prior $\ell_2$-normalisation} of the vectors. What pathology arises if normalisation is skipped?
+
+\textit{Solution.} $k$-means minimises within-cluster sum of squared Euclidean distances. Without normalisation, document magnitudes dominate the distance: long documents have large $\|\mathbf{x}\|$, hence large $\|\mathbf{x} - \boldsymbol{\mu}\|$ regardless of topic. As a result, the algorithm tends to form clusters by length rather than by topic --- precisely the wrong outcome.
+
+After $\ell_2$-normalisation, all vectors lie on the unit sphere; Euclidean distance becomes a monotone function of cosine similarity (Property 2.4.2), and $k$-means is equivalent to spherical $k$-means, which clusters by topic regardless of length. Practitioners therefore always normalise before $k$-means in NLP.
+
+\subsection{Python snippet: cosine, Euclidean, and FAISS}
+
+\begin{lstlisting}
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
+
+corpus = [
+    "Tunisia football national team won the cup",
+    "the cup of tea I had this morning was great",
+    "national football leagues across Africa",
+    "great cup of coffee at this Tunis cafe",
+]
+
+vec = TfidfVectorizer().fit(corpus)
+X = vec.transform(corpus)
+
+q = vec.transform(["Tunisia football"])
+
+print("Cosine similarities to query:")
+for i, s in enumerate(cosine_similarity(q, X).ravel()):
+    print(f"  doc {i}: {s:.3f} -- {corpus[i]}")
+
+print("\nEuclidean distances to query:")
+for i, s in enumerate(euclidean_distances(q, X).ravel()):
+    print(f"  doc {i}: {s:.3f} -- {corpus[i]}")
+
+# Equivalent dot product after L2-normalisation
+from sklearn.preprocessing import normalize
+Xn = normalize(X, norm="l2")
+qn = normalize(q, norm="l2")
+print("\nDot product on normalised vectors (== cosine):")
+print(np.asarray(qn @ Xn.T.toarray()).ravel().round(3))
+\end{lstlisting}
+
+For a million-document index, replace these dense methods by an approximate-nearest-neighbour engine (e.g.\ \texttt{faiss.IndexFlatIP} or \texttt{IndexHNSWFlat}).
+
+\subsection{Exercises}
+\begin{enumerate}
+    \item Compute, by hand, the cosine similarity, dot product, and Euclidean distance between
+    \[ \mathbf{a} = (1, 2, 0, 1)^\top, \quad \mathbf{b} = (2, 4, 0, 2)^\top, \quad \mathbf{c} = (0, 1, 1, 1)^\top. \]
+    Comment on the relative ranking of $\mathbf{a}$ to $\mathbf{b}$ vs $\mathbf{a}$ to $\mathbf{c}$ under each measure.
+    \item Show, using only the definition, that $\cos(\mathbf{a}, \mathbf{a}) = 1$ for every non-zero vector $\mathbf{a}$, and that $\cos(\mathbf{a}, -\mathbf{a}) = -1$.
+    \item Prove that the angular distance $\theta(\mathbf{a}, \mathbf{b}) = \arccos(\cos(\mathbf{a}, \mathbf{b}))$ satisfies the triangle inequality on the unit sphere. (Sketch the geometric argument; full proof requires spherical geometry.)
+    \item Why is the dot product the preferred similarity in production search systems built on dense embeddings? (Hint: think about $\ell_2$-normalisation and hardware.)
+    \item (Synthesis.) Sketch a Tunisian-news semantic search engine: which embedding model would you use, what similarity measure, what indexing approach (exact vs approximate), and how would you evaluate retrieval quality? Identify two failure cases that purely lexical (TF--IDF) search would miss but a dense, multilingual model would handle.
+\end{enumerate}
+
+\section{Evaluation metrics}
+\label{sec:eval}
+
+\subsection{Motivation}
+``\emph{What is not measured cannot be improved.}'' An NLP system without principled evaluation is an NLP system without progress. Different tasks demand different metrics: a classifier is judged on whether it returns the correct label, a translation system on how closely its output matches a reference, a language model on how well it predicts unseen text. This section formalises the metrics most often quoted in the literature: \textbf{Accuracy, Precision, Recall, $F_1$} for classification (Section~\ref{sec:eval-classification}), and \textbf{Perplexity, BLEU, ROUGE} for generation (Section~\ref{sec:eval-generation}). We pay equal attention to their pitfalls --- a single number is never the whole story.
+
+\subsection{Approach by problem: the misleading 95\% accuracy}
+\textbf{Problem.} You build a classifier that detects whether a tweet contains hate speech. Hate-speech tweets account for $5\%$ of your corpus. A trivial baseline that always predicts \emph{not hate speech} achieves $95\%$ accuracy. Is this baseline useful? What metric reveals its uselessness?
+
+\textbf{Solution sketch.} The baseline misses every actual case of hate speech --- its \emph{recall on the positive class} is $0$. Accuracy is misleading whenever classes are imbalanced: it is dominated by the easy majority class. Reporting \emph{precision and recall on the positive class}, or the $F_1$ score, makes the baseline's failure visible immediately. This single example motivates everything that follows.
+
+\subsection{Classification metrics}
+\label{sec:eval-classification}
+
+\subsubsection*{The confusion matrix}
+
+\begin{definition}[Confusion matrix, binary case]
+For a binary classifier with output $\hat{y} \in \{0, 1\}$ and ground-truth label $y \in \{0, 1\}$, define four counts on a test set of size $N$:
+\begin{center}
+\begin{tabular}{|c|cc|}
+\hline
+& Predicted positive & Predicted negative \\
+\hline
+Actual positive & $\mathrm{TP}$ (true positive) & $\mathrm{FN}$ (false negative) \\
+Actual negative & $\mathrm{FP}$ (false positive) & $\mathrm{TN}$ (true negative) \\
+\hline
+\end{tabular}
+\end{center}
+By construction, $\mathrm{TP} + \mathrm{FP} + \mathrm{FN} + \mathrm{TN} = N$.
+\end{definition}
+
+\subsubsection*{Accuracy}
+
+\begin{definition}[Accuracy]
+\[ \mathrm{Accuracy} = \frac{\mathrm{TP} + \mathrm{TN}}{\mathrm{TP} + \mathrm{TN} + \mathrm{FP} + \mathrm{FN}}. \]
+The fraction of predictions that match the ground truth.
+\end{definition}
+
+Accuracy is intuitive but misleading under class imbalance. Use it only when the class distribution is roughly balanced and the costs of false positives and false negatives are comparable.
+
+\subsubsection*{Precision and Recall}
+
+\begin{definition}[Precision and Recall]
+\[ \mathrm{Precision} = \frac{\mathrm{TP}}{\mathrm{TP} + \mathrm{FP}}, \qquad \mathrm{Recall} = \frac{\mathrm{TP}}{\mathrm{TP} + \mathrm{FN}}. \]
+\end{definition}
+
+\paragraph{Library analogy.} Imagine searching a library for books on machine learning.
+\begin{itemize}
+    \item \textbf{Precision}: of the books you brought home, how many are about ML?
+    \item \textbf{Recall}: of all ML books in the library, how many did you bring home?
+\end{itemize}
+A search that returns only the most obvious ML book has high precision but low recall. A search that returns every book in the library has perfect recall but very low precision.
+
+\paragraph{When to optimise which.}
+\begin{itemize}
+    \item \textbf{Precision-critical}: spam detection (a false positive blocks a legitimate email --- much worse than letting one spam through).
+    \item \textbf{Recall-critical}: medical screening (missing a tumour is far worse than a false alarm --- patients can be re-tested).
+    \item \textbf{Balanced}: most generic NLP tasks (NER, sentiment, topic classification).
+\end{itemize}
+
+\subsubsection*{F-measure}
+
+\begin{definition}[$F_1$ score]
+The $F_1$ score is the harmonic mean of Precision and Recall:
+\[ F_1 = \frac{2 \cdot \mathrm{Precision} \cdot \mathrm{Recall}}{\mathrm{Precision} + \mathrm{Recall}}. \]
+\end{definition}
+
+The harmonic mean penalises imbalance more harshly than the arithmetic mean: $F_1$ is high only when \emph{both} Precision and Recall are high.
+
+\begin{property}[Bounds of $F_1$]
+$0 \le F_1 \le 1$. $F_1 = 1$ iff $\mathrm{Precision} = \mathrm{Recall} = 1$. If either is zero, $F_1 = 0$.
+\end{property}
+
+\begin{remark}[$F_\beta$ generalisation]
+The general $F_\beta$ score weights recall $\beta$ times more than precision:
+\[ F_\beta = (1 + \beta^2) \cdot \frac{\mathrm{Precision} \cdot \mathrm{Recall}}{\beta^2 \cdot \mathrm{Precision} + \mathrm{Recall}}. \]
+$F_2$ favours recall (medical), $F_{0.5}$ favours precision (anti-spam).
+\end{remark}
+
+\subsubsection*{Multi-class extensions}
+
+For $K$-class problems, compute Precision/Recall/$F_1$ per class, then aggregate:
+\begin{itemize}
+    \item \textbf{Macro-average}: simple average of the $K$ per-class metrics. Treats all classes equally.
+    \item \textbf{Micro-average}: pool all decisions across classes, then compute the metric. Dominated by frequent classes.
+    \item \textbf{Weighted average}: weight each class by its prevalence.
+\end{itemize}
+
+\subsection{Generation metrics}
+\label{sec:eval-generation}
+
+\subsubsection*{Perplexity}
+
+Generation models do not produce a discrete label; they produce a probability distribution over the next token. \emph{Perplexity} measures how well the model predicts a held-out test sequence.
+
+\begin{definition}[Perplexity]
+For a language model $P_\theta$ and a sequence $w_1, \dots, w_N$ from a held-out set, the perplexity is
+\[ \mathrm{PPL}(P_\theta) = 2^{-\frac{1}{N} \sum_{i=1}^{N} \log_2 P_\theta(w_i \mid w_1, \dots, w_{i-1})} = \exp\Big(- \frac{1}{N} \sum_{i=1}^{N} \log P_\theta(w_i \mid w_1, \dots, w_{i-1})\Big). \]
+\end{definition}
+
+\paragraph{Intuition.} If perplexity is $k$, the model is on average ``hesitating between $k$ equally likely words'' at each position. Lower is better; perplexity of $1$ means perfect prediction.
+
+\begin{property}[Lower bound]
+$\mathrm{PPL}(P_\theta) \ge 1$, with equality iff $P_\theta$ assigns probability $1$ to every observed token.
+\end{property}
+
+\begin{remark}[A caveat]
+Low perplexity does not guarantee high-quality output. A model can have low perplexity on test text yet produce repetitive or incoherent generation. Perplexity is therefore a useful but partial proxy.
+\end{remark}
+
+\subsubsection*{BLEU (translation)}
+
+\begin{definition}[BLEU score, simplified]
+The Bilingual Evaluation Understudy score (Papineni et al., 2002) compares a candidate translation $c$ to one or several reference translations $\{r_1, \dots, r_M\}$. It combines a \emph{modified $n$-gram precision} $p_n$ for $n = 1, \dots, N$ (typically $N = 4$) and a \emph{brevity penalty} $\mathrm{BP}$:
+\[ \mathrm{BLEU} = \mathrm{BP} \cdot \exp\!\left( \sum_{n=1}^{N} \frac{1}{N} \log p_n \right), \]
+where
+\[ \mathrm{BP} = \begin{cases} 1 & \text{if } |c| > |r| \\ \exp(1 - |r| / |c|) & \text{otherwise} \end{cases} \]
+penalises candidates shorter than the reference.
+\end{definition}
+
+\paragraph{Modified $n$-gram precision.} For each $n$-gram in the candidate, count its occurrences in the candidate (call it $\mathrm{count}_c$) and clip it by the maximum occurrences across the references. Sum the clipped counts and divide by the total candidate $n$-grams.
+
+\paragraph{Range.} $0 \le \mathrm{BLEU} \le 1$ (often reported as a percentage). Modern strong systems on news translation reach $30$--$50$ BLEU; human translation typically scores in the same range, illustrating that BLEU is a useful but imperfect proxy for human judgement.
+
+\subsubsection*{ROUGE (summarization)}
+
+\begin{definition}[ROUGE-N, simplified]
+For a candidate summary $c$ and a reference $r$,
+\[ \mathrm{ROUGE\text{-}N} = \frac{|\,n\text{-grams}_c \cap n\text{-grams}_r\,|}{|\,n\text{-grams}_r\,|} = \mathrm{Recall}_n. \]
+ROUGE-$1$ uses unigrams; ROUGE-$2$ uses bigrams.
+\end{definition}
+
+\begin{definition}[ROUGE-L]
+ROUGE-L uses the length of the longest common subsequence (LCS) between $c$ and $r$:
+\[ \mathrm{ROUGE\text{-}L} = \frac{\mathrm{LCS}(c, r)}{\max(|c|, |r|)}. \]
+\end{definition}
+
+\paragraph{BLEU vs ROUGE.} BLEU is precision-oriented (``what fraction of the candidate is correct?''); ROUGE is recall-oriented (``what fraction of the reference is captured?''). For \emph{translation} we typically want both, but with a strong precision bias --- hence BLEU. For \emph{summarisation} we want to avoid missing important content, so recall is paramount --- hence ROUGE.
+
+\subsection{Summary table}
+
+\begin{center}
+\begin{tabular}{|l|l|l|l|}
+\hline
+\textbf{Metric} & \textbf{Task} & \textbf{Captures} & \textbf{Range} \\
+\hline
+Accuracy & Classification & Overall correctness & $[0, 1]$ \\
+Precision & Classification & Quality of positive predictions & $[0, 1]$ \\
+Recall & Classification & Coverage of positive cases & $[0, 1]$ \\
+$F_1$ & Classification & Harmonic balance of P and R & $[0, 1]$ \\
+Perplexity & Language modelling & Predictive quality (geometric mean) & $[1, \infty)$ \\
+BLEU & Translation & $n$-gram precision with brevity penalty & $[0, 1]$ \\
+ROUGE-N & Summarisation & $n$-gram recall vs reference & $[0, 1]$ \\
+ROUGE-L & Summarisation & Longest common subsequence recall & $[0, 1]$ \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{remark}[Modern complementary metrics]
+Each of the above is purely surface-form: it counts $n$-gram or token matches and ignores meaning. Modern alternatives such as \emph{BERTScore} (semantic similarity via contextual embeddings), \emph{LLM-as-a-judge} (a strong language model rates the candidate), \emph{RAGAS} (evaluation suite for retrieval-augmented generation) and \emph{MT-Bench} (multi-turn instruction-following) attempt to measure semantic and pragmatic adequacy. We encounter them in later parts of the course.
+\end{remark}
+
+\subsection{Worked examples}
+
+\textbf{Example 1 (Confusion matrix --- Easy).}
+A spam detector tested on $1000$ emails ($300$ spam, $700$ legitimate) produces $250$ true positives, $50$ false negatives, $40$ false positives, $660$ true negatives. Compute Accuracy, Precision, Recall, and $F_1$ for the spam class.
+
+\textit{Solution.}
+\begin{align*}
+\mathrm{Accuracy} &= (250 + 660) / 1000 = 0.91, \\
+\mathrm{Precision} &= 250 / (250 + 40) \approx 0.862, \\
+\mathrm{Recall} &= 250 / (250 + 50) \approx 0.833, \\
+F_1 &= \frac{2 \cdot 0.862 \cdot 0.833}{0.862 + 0.833} \approx 0.847.
+\end{align*}
+
+\medskip
+
+\textbf{Example 2 (Imbalanced classes --- Medium).}
+On a corpus where $99\%$ of tweets are non-toxic, a classifier predicts \emph{non-toxic} for every input. Compute its accuracy, precision, recall, and $F_1$ on the toxic class.
+
+\textit{Solution.} TP $= 0$, FN $= 1\%$ of corpus, FP $= 0$, TN $= 99\%$ of corpus.
+$\mathrm{Accuracy} = 0.99$. $\mathrm{Precision} = 0/0$ (undefined; conventionally $0$). $\mathrm{Recall} = 0/1\% = 0$. $F_1 = 0$.
+The accuracy of $99\%$ celebrates a model that detects no toxicity at all. $F_1$ correctly reveals it as useless on the task we care about. \emph{Always inspect class-conditional metrics under imbalance.}
+
+\medskip
+
+\textbf{Example 3 (BLEU vs ROUGE on summary --- Hard).}
+Reference: ``\emph{Tunisia won the African Cup of Nations.}'' (8 tokens)
+Candidate: ``\emph{Tunisia won the cup.}'' (4 tokens)
+
+(a) Compute the unigram precision of the candidate (BLEU-1, no brevity penalty for now).
+(b) Compute ROUGE-1.
+(c) Compute the brevity penalty and the full BLEU-1.
+
+\textit{Solution.}
+(a) Candidate unigrams: $\{$Tunisia, won, the, cup$\}$. All four appear in the reference. Modified precision $= 4/4 = 1.0$.
+
+(b) ROUGE-1 unigram recall: reference unigrams (after lowercasing) $\{$tunisia, won, the, african, cup, of, nations$\}$, $7$ distinct. Candidate covers $\{$tunisia, won, the, cup$\}$, $4$ tokens. ROUGE-1 $= 4/7 \approx 0.571$.
+
+(c) Brevity penalty: $|c| = 4 < |r| = 8$, so $\mathrm{BP} = \exp(1 - 8/4) = \exp(-1) \approx 0.368$. BLEU-1 $= 0.368 \times 1.0 \approx 0.368$.
+
+The candidate has high precision (everything it says is correct) but low recall (it omits half the reference). BLEU's brevity penalty captures part of this issue; ROUGE captures it directly through recall.
+
+\subsection{Python snippet: classification + generation metrics}
+
+\begin{lstlisting}
+# Classification
+from sklearn.metrics import precision_recall_fscore_support, classification_report
+
+y_true = [1, 1, 1, 0, 0, 0, 1, 0]
+y_pred = [1, 0, 1, 0, 1, 0, 1, 0]
+
+p, r, f1, _ = precision_recall_fscore_support(
+    y_true, y_pred, pos_label=1, average="binary",
+)
+print(f"Precision = {p:.3f}, Recall = {r:.3f}, F1 = {f1:.3f}")
+print("\nFull report:")
+print(classification_report(y_true, y_pred, target_names=["neg", "pos"]))
+
+# BLEU and ROUGE
+# pip install nltk rouge-score
+from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
+from rouge_score import rouge_scorer
+
+reference = "Tunisia won the African Cup of Nations".split()
+candidate = "Tunisia won the cup".split()
+
+bleu = sentence_bleu(
+    [reference], candidate,
+    weights=(1.0, 0, 0, 0),  # BLEU-1
+    smoothing_function=SmoothingFunction().method1,
+)
+print(f"\nBLEU-1 = {bleu:.3f}")
+
+scorer = rouge_scorer.RougeScorer(["rouge1", "rougeL"], use_stemmer=True)
+scores = scorer.score(" ".join(reference), " ".join(candidate))
+for k, v in scores.items():
+    print(f"  {k}: P={v.precision:.3f} R={v.recall:.3f} F={v.fmeasure:.3f}")
+\end{lstlisting}
+
+\subsection{Exercises}
+\begin{enumerate}
+    \item For a NER tagger that finds $80$ true entities, misses $20$, and produces $30$ spurious entities, compute Precision, Recall, and $F_1$ on the entity class.
+    \item Show that for any binary classifier $F_1 \le \min(\mathrm{Precision}, \mathrm{Recall})$, with equality iff $\mathrm{Precision} = \mathrm{Recall}$.
+    \item A language model assigns probabilities $0.5, 0.5, 0.25$ to the three tokens of a held-out sequence. Compute its perplexity. What perplexity would a uniform model over a vocabulary of $|V| = 10{,}000$ achieve?
+    \item For the reference ``\emph{The cat is on the mat}'' and the candidate ``\emph{The cat sits on the mat}'', compute BLEU-2 and ROUGE-2 by hand. What linguistic phenomenon is being measured (or missed) by each?
+    \item (Synthesis.) Design an evaluation protocol for a Tunisian-Arabic dialect-to-French translation system. Identify which metrics you would report, which biases each metric carries (e.g.\ BLEU's surface-form sensitivity), and how you would complement them with human evaluation.
+\end{enumerate}

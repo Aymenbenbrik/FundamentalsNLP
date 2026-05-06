@@ -1,0 +1,232 @@
+\documentclass[12pt,a4paper]{report}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{amsmath, amssymb, amsthm, amsfonts}
+\usepackage{geometry}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{tikz}
+\geometry{hmargin=2.5cm,vmargin=2.5cm}
+
+% Theorem-like environments
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{example}{Example}[section]
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}[section]
+\newtheorem{property}{Property}[section]
+
+% Python listings
+\lstset{
+    language=Python,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue}\bfseries,
+    stringstyle=\color{red},
+    commentstyle=\color{green!60!black}\itshape,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    stepnumber=1,
+    frame=single,
+    breaklines=true
+}
+
+\title{Fundamentals of Natural Language Processing\\[0.3cm] \large Chapter 2 --- Text Representation and Evaluation}
+\author{Aymen Ben Brik}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\setcounter{chapter}{1}
+\chapter{Text Representation and Evaluation}
+
+A computer cannot operate on raw text. Before any model can ``read'' a sentence, the sentence must be \emph{tokenized} (cut into discrete units), \emph{numericalized} (converted into integer indices), and \emph{vectorized} (embedded in a vector space). This chapter develops the chain rigorously: tokenization granularities, sparse and dense vector-space models, semantic similarity, and the evaluation metrics by which we compare NLP systems.
+
+\section{Tokenization fundamentals}
+
+\subsection{Motivation}
+Tokenization is the unsung hero of every NLP pipeline. A poor tokenizer silently undermines the most sophisticated downstream model: out-of-vocabulary words become unknown tokens, morphological variants are treated as unrelated, multi-word expressions are fragmented. Conversely, a tokenizer aligned with the data distribution can shrink vocabulary size, accelerate training, and improve generalisation. Modern Large Language Models all rely on a single technical choice --- \emph{sub-word tokenization} --- whose strengths and limitations every practitioner should understand.
+
+\subsection{Approach by problem: how many tokens are in this sentence?}
+\textbf{Problem.} Consider the sentence
+\begin{quote}
+\emph{``I've been to Sfax-University; it's amazing!''}
+\end{quote}
+Count how many ``tokens'' it contains under each of the following naive policies:
+\begin{enumerate}
+    \item split on whitespace;
+    \item split on whitespace and punctuation;
+    \item split into individual characters.
+\end{enumerate}
+
+\textbf{Solution sketch.}
+\begin{enumerate}
+    \item Whitespace only: $\{$\texttt{I've}, \texttt{been}, \texttt{to}, \texttt{Sfax-University;}, \texttt{it's}, \texttt{amazing!}$\}$ --- $6$ tokens. Punctuation glued to words; ``I've'' is a single token.
+    \item Whitespace and punctuation: $\{$\texttt{I}, \texttt{'ve}, \texttt{been}, \texttt{to}, \texttt{Sfax}, \texttt{-}, \texttt{University}, \texttt{;}, \texttt{it}, \texttt{'s}, \texttt{amazing}, \texttt{!}$\}$ --- $12$ tokens. The contraction \emph{I've} is split, but so is the legitimate compound \emph{Sfax-University}.
+    \item Characters: $35$ tokens. Punctuation, capitalisation and spaces are all preserved, but every word is fragmented; the model would have to relearn ``what is a word'' from data.
+\end{enumerate}
+Each policy entails a trade-off between vocabulary size and information preserved. There is no universally correct answer; the choice is engineering, guided by the downstream task and the language being modelled.
+
+\subsection{Definition and the tokenization pipeline}
+
+\begin{definition}[Tokenization]
+\textbf{Tokenization} is the process of converting a raw text string into an ordered sequence of discrete units called \textbf{tokens}, drawn from a finite inventory called the \textbf{vocabulary} $V$.
+\end{definition}
+
+\begin{definition}[Numericalization]
+\textbf{Numericalization} is the bijective mapping $V \leftrightarrow \{0, 1, \dots, |V|-1\}$ that assigns each token an integer identifier.
+\end{definition}
+
+The full pipeline is: \emph{raw text} $\to$ tokens $\to$ token IDs $\to$ tensor inputs to a model. Every NLP system is built on top of these three trivially simple but practically critical steps.
+
+\subsection{Three levels of granularity}
+
+\begin{center}
+\begin{tabular}{|l|l|l|l|}
+\hline
+\textbf{Level} & \textbf{Vocabulary size} & \textbf{Sequence length} & \textbf{OOV behaviour} \\
+\hline
+Word & Very large ($10^5$--$10^6$) & Short & Unknown words become \texttt{[UNK]} \\
+Character & Tiny ($\sim 100$) & Very long & No OOV (any character is in $V$) \\
+Sub-word & Moderate ($10^4$--$10^5$) & Moderate & Robust: any word splits into known pieces \\
+\hline
+\end{tabular}
+\end{center}
+
+\paragraph{Word tokenization.}
+The intuitive default. Tokens are entire words separated by whitespace and punctuation rules. Strengths: each token carries lexical meaning, and downstream models converge faster on a small annotated dataset. Weaknesses: vocabulary explodes for morphologically rich languages (\emph{Arabic, Turkish, Finnish}); typos and rare words become \texttt{[UNK]}; cannot generalise across morphological variants (\emph{run / runs / running} are three unrelated tokens).
+
+\paragraph{Character tokenization.}
+Each character is a token. Strengths: vocabulary is bounded and stable across languages; no out-of-vocabulary problem (any unseen word becomes a sequence of known characters). Weaknesses: sequences become $5$--$10\times$ longer, increasing both memory and compute; the model must learn from scratch which character sequences form meaningful units.
+
+\paragraph{Sub-word tokenization.}
+The dominant choice in 2020s NLP. Vocabulary contains \emph{frequent words as wholes} and \emph{rare words split into meaningful pieces}. The split is learnt from data using algorithms such as Byte-Pair Encoding (BPE), WordPiece (BERT) and SentencePiece (XLM-R, T5). Sub-word tokenization combines the strengths of word-level (semantic units for common words) and character-level (no OOV) approaches.
+
+\subsection{Pre-processing operations}
+
+Tokenization is often combined with ad-hoc transformations that modify or normalise the input string before splitting.
+
+\begin{itemize}
+    \item \textbf{Lowercasing}: ``Apple'' and ``apple'' become equivalent. Useful for spelling-insensitive tasks but destroys signal in NER (a capitalised \emph{Apple} is more likely the company).
+    \item \textbf{Punctuation removal}: simplifies vocabulary but loses sentence boundaries.
+    \item \textbf{Stop-word removal}: discard high-frequency words (\emph{the, of, in}) that carry little task-specific information. Useful for keyword search; harmful for syntax-sensitive tasks.
+    \item \textbf{Stemming}: chop morphological suffixes by hand-coded rules (Porter, Snowball). \emph{running} $\to$ \emph{run}. Fast but linguistically crude.
+    \item \textbf{Lemmatization}: map a word to its dictionary form using a morphological analyser. \emph{better} $\to$ \emph{good}. Slower but linguistically principled.
+\end{itemize}
+
+\begin{remark}
+Modern large language models perform little or no manual pre-processing: they are trained on raw text with sub-word tokenization, and the model itself learns whatever normalisations it needs. Heavy pre-processing is typical of statistical-era pipelines and remains useful for small-data, classical-ML systems.
+\end{remark}
+
+\subsection{Byte-Pair Encoding (BPE) in detail}
+
+BPE is the simplest sub-word algorithm and the workhorse of GPT-2, GPT-3, GPT-4, RoBERTa, and many others. It iteratively merges the most frequent pair of adjacent symbols.
+
+\paragraph{Algorithm.}
+\begin{enumerate}
+    \item Start with a vocabulary that contains every individual character of the corpus.
+    \item Treat each word as a sequence of characters with an end-of-word marker.
+    \item Count the frequency of every adjacent symbol pair across the corpus.
+    \item Merge the most frequent pair into a new symbol; add it to the vocabulary.
+    \item Repeat steps 3--4 until a target vocabulary size is reached.
+\end{enumerate}
+
+\begin{example}[A miniature BPE run]
+Suppose the corpus consists of the words \texttt{low}, \texttt{lower}, \texttt{newest}, \texttt{widest}, with frequencies $5, 2, 6, 3$. The initial vocabulary is $\{$\texttt{l, o, w, e, r, n, s, t, i, d}, \texttt{</w>}$\}$. Counting pairs:
+\[ \texttt{e\,s} = 6 + 3 = 9,\quad \texttt{s\,t} = 9,\quad \texttt{l\,o} = 7, \quad \texttt{o\,w} = 7, \dots \]
+The pair \texttt{e\,s} (9 occurrences) is merged first into a new symbol \texttt{es}. Recount, merge again --- now \texttt{es\,t} (9 occurrences) into \texttt{est}. Continue: \texttt{lo}, \texttt{low}, \texttt{ne}, \texttt{new}, \dots\ After enough merges, frequent words like \texttt{low</w>} become single tokens, while rare words remain decomposed. A new word like \texttt{lowest} is then tokenized as \texttt{low + est}, even though it never appeared in training.
+\end{example}
+
+\paragraph{Why BPE works.} The algorithm provides a natural rate--distortion trade-off. As vocabulary grows, the average sequence length shrinks, but the ``unit cost'' per token increases (each token carries more information). Empirically, vocabularies of $30$k--$100$k sub-words give an excellent trade-off across many languages.
+
+\subsection{Multilingual and dialectal challenges}
+
+Tokenization choices that are adequate for English may fail for other languages.
+
+\begin{itemize}
+    \item \textbf{Whitespace-free scripts.} Chinese, Japanese, Thai write without spaces. Word tokenization requires segmentation algorithms (e.g.\ Jieba, MeCab).
+    \item \textbf{Morphologically rich languages.} Arabic and Turkish concatenate prefixes and suffixes onto a stem, generating very large surface-form inventories. Sub-word tokenization is essential.
+    \item \textbf{Code-switching and dialects.} Tunisian Arabic frequently mixes Modern Standard Arabic, French, and Latin-script transliterations (``arabizi''). A general-purpose multilingual tokenizer (e.g.\ XLM-R's SentencePiece) is recommended over single-language tokenizers.
+    \item \textbf{Right-to-left scripts.} Display order and logical order can differ; numerical IDs operate on logical order, but evaluation tools must be aware of the visual rendering.
+\end{itemize}
+
+\subsection{Worked examples}
+
+\textbf{Example 1 (Granularity choice --- Easy).}
+You are training a classifier on $1000$ short SMS messages, mostly in English with frequent typos. Which tokenization granularity is most appropriate, and why?
+
+\textit{Solution.} Sub-word tokenization. Word-level would suffer from OOV (typos produce never-seen surface forms); character-level would lengthen sequences and dilute the signal in a small dataset. Sub-word splits typos into recognised pieces (\texttt{hapy} $\to$ \texttt{ha + py}) without exploding the vocabulary.
+
+\medskip
+
+\textbf{Example 2 (BPE iteration --- Medium).}
+Apply two iterations of BPE to the toy corpus $\{\texttt{aaab}, \texttt{aabb}, \texttt{abab}\}$ (each of frequency $1$). Show the resulting vocabulary after each merge.
+
+\textit{Solution.} Initial vocabulary: $\{\texttt{a}, \texttt{b}\}$.
+
+Iteration 1: count pairs --- \texttt{a\,a} appears in \texttt{aaab} (twice) and \texttt{aabb} (once) and \texttt{abab} (zero) $= 3$; \texttt{a\,b} appears in \texttt{aaab} (once) and \texttt{aabb} (once) and \texttt{abab} (twice) $= 4$; \texttt{b\,a} appears once (in \texttt{abab}); \texttt{b\,b} once.
+Most frequent: \texttt{a\,b} (4). Merge into \texttt{ab}. Vocabulary: $\{\texttt{a}, \texttt{b}, \texttt{ab}\}$. Re-tokenization: \texttt{aaab} $\to$ \texttt{a\,a\,ab}; \texttt{aabb} $\to$ \texttt{a\,ab\,b}; \texttt{abab} $\to$ \texttt{ab\,ab}.
+
+Iteration 2: count new pairs --- \texttt{a\,a} (in \texttt{aaab}, once) $= 1$; \texttt{a\,ab} (in \texttt{aaab} and \texttt{aabb}) $= 2$; \texttt{ab\,b} (in \texttt{aabb}) $= 1$; \texttt{ab\,ab} (in \texttt{abab}) $= 1$.
+Most frequent: \texttt{a\,ab} (2). Merge into \texttt{aab}. Vocabulary: $\{\texttt{a}, \texttt{b}, \texttt{ab}, \texttt{aab}\}$.
+
+\medskip
+
+\textbf{Example 3 (Tokenizer mismatch --- Hard).}
+A pretrained English BERT tokenizer applied to Tunisian Arabic in Latin script (``arabizi'') splits the word \texttt{n7ebek} (``I love you'') as \texttt{[n, \#\#7, \#\#e, \#\#bek]}. Discuss the consequences for a downstream classifier and propose two remediation strategies.
+
+\textit{Solution.}
+\begin{itemize}
+    \item \textbf{Consequences.} The numeric digit \texttt{7} (which substitutes for the Arabic letter \emph{`}) is treated as foreign; the model sees an unfamiliar pattern with no semantic anchoring. The classifier's representation of the word will be near-random, and its predictions for sentences containing arabizi will be poor.
+    \item \textbf{Remediations.}
+    \begin{enumerate}
+        \item Use a multilingual tokenizer (e.g.\ \texttt{xlm-roberta-base}'s SentencePiece) trained on much broader data including Latin-script Arabic.
+        \item Train a domain-specific tokenizer on a Tunisian-Arabic corpus before fine-tuning the model. The merges will then capture frequent dialectal sub-words natively.
+    \end{enumerate}
+\end{itemize}
+
+\subsection{Python snippet: comparing tokenizers}
+
+\begin{lstlisting}
+# pip install nltk transformers
+import nltk
+from transformers import AutoTokenizer
+
+text = "I've been to Sfax-University; it's amazing!"
+
+# Word-level (NLTK)
+nltk.download('punkt_tab', quiet=True)
+print("Word tokens (NLTK):", nltk.word_tokenize(text))
+
+# Sub-word (BERT WordPiece)
+bert = AutoTokenizer.from_pretrained("bert-base-uncased")
+print("BERT sub-word tokens:", bert.tokenize(text))
+
+# Sub-word (GPT-2 byte-level BPE)
+gpt2 = AutoTokenizer.from_pretrained("gpt2")
+print("GPT-2 BPE tokens:    ", gpt2.tokenize(text))
+\end{lstlisting}
+
+The same input produces different tokenisations under different algorithms. Reading the tokenized output is the first debugging step when a model behaves unexpectedly.
+
+\subsection{Exercises}
+\begin{enumerate}
+    \item For each scenario, recommend a tokenization granularity (word / character / sub-word) and justify briefly:
+    \begin{enumerate}
+        \item Building a spelling corrector for French SMS;
+        \item Training a sentiment classifier on $50$ million Web reviews;
+        \item Building a name-entity recognizer for German legal documents.
+    \end{enumerate}
+    \item Explain in one paragraph why character-level tokenization, despite its $|V| \approx 100$, has \emph{not} replaced sub-word tokenization in modern LLMs.
+    \item Tokenize the sentence ``\emph{The CEOs' meeting was rescheduled.}'' with two different policies (whitespace+punctuation, and a sub-word tokenizer of your choice). Comment on the differences for the words \emph{CEOs'} and \emph{rescheduled}.
+    \item Carry out three iterations of BPE on the toy corpus $\{\texttt{xay}, \texttt{xay}, \texttt{yax}, \texttt{xy}\}$ where each word has frequency $1$. List the new vocabulary at each step.
+    \item (Synthesis.) For a multilingual Tunisian dialect dataset (mixing Arabic script, Latin-script arabizi, and French), discuss the trade-offs between (i) using a single multilingual sub-word tokenizer (e.g.\ XLM-R), (ii) training a domain-specific tokenizer on the dataset, and (iii) using language-specific tokenizers for each script and merging the outputs.
+\end{enumerate}
+
+\end{document}

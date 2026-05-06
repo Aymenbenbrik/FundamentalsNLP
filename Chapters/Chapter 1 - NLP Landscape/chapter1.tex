@@ -802,4 +802,190 @@ The \texttt{class\_log\_prior\_} and \texttt{feature\_log\_prob\_} attributes of
     \item (Synthesis.) For a moderation system that must \emph{(a)} classify a tweet as toxic / safe and \emph{(b)} detect previously unseen forms of toxicity, argue why a hybrid discriminative + generative architecture could outperform either alone.
 \end{enumerate}
 
+\section{Historical evolution: from rules to large language models}
+\label{sec:history}
+
+\subsection{Motivation}
+NLP has reinvented itself roughly once per decade. Each new era inherits the data and applications of its predecessor but discards the previous era's modelling assumptions. Understanding this recurring cycle pays off in two ways: it explains \emph{why} certain methods exist (each is the answer to a previous limitation), and it provides a forecasting heuristic --- when a modern method has a clear failure mode, the next era's method is likely to address exactly that mode. The pattern also highlights a single guiding principle: \emph{at every step, hand-engineered structure has been replaced by learned representations from data, and the volume of data and parameters has grown by orders of magnitude}.
+
+\subsection{Approach by problem: how would you build a chatbot in 1966?}
+\textbf{Problem.} Without machine learning, neural networks, or even substantial computing power, how could you build a system that converses in natural language with a human user? Sketch the design Joseph Weizenbaum chose for ELIZA in 1966.
+
+\textbf{Solution sketch.} Weizenbaum designed \emph{pattern-matching templates} keyed on user input. A user message such as ``\emph{I am unhappy.}'' triggers a script associated with the keyword \emph{unhappy}, which produces a response such as ``\emph{Why are you unhappy?}''. ELIZA performs no understanding; it shuffles surface forms by string substitution. Yet several users believed they were conversing with a human therapist --- the so-called ELIZA effect. The strengths and limits of this pattern were the seeds of the next era: the system was \emph{linguistically brittle, knowledge-bound, and domain-specific}, but proved that \emph{some} useful interaction is achievable with extremely simple machinery.
+
+\subsection{Era 1 --- Rule-based systems (1950s--1980s)}
+
+\paragraph{Approach.} Linguists hand-write rules. Knowledge bases enumerate facts. Formal grammars (context-free, context-sensitive) describe syntax. Algorithms parse, transform, or generate strings according to the rules.
+
+\paragraph{Representative systems.}
+\begin{itemize}
+    \item \emph{Georgetown--IBM experiment} (1954): a Russian--English machine translator built from $\sim$250 rules and a 6-rule grammar. Demoed live to a delighted press; declared the imminent end of human translators.
+    \item \emph{ELIZA} (Weizenbaum, 1966): the pattern-matching ``psychotherapist'' described above.
+    \item \emph{SHRDLU} (Winograd, 1972): a system that conversed in English about a blocks world.
+    \item Rule-based spell checkers, dictionary-based morphological analysers, regex-driven information extraction.
+\end{itemize}
+
+\paragraph{Limitations.} Rules do not scale: every new domain requires new rules, every new language requires re-coding. Ambiguity is hard to capture in rule form (which reading does the rule choose?). Coverage is brittle: any input not anticipated by the rules fails silently. Maintenance costs grow super-linearly with the rule base.
+
+\subsection{Era 2 --- Statistical NLP (1990s--2000s)}
+
+\paragraph{Approach.} Replace hand-written rules by \emph{statistical models} estimated from text corpora. Use probabilistic decision rules: among parse trees, output the most probable; among translations, output the most likely target sentence. The IBM Candide statistical machine translation system, developed in the late 1980s and early 1990s, set the tone.
+
+\paragraph{N-gram language models.} The era's flagship is the n-gram. Given a word sequence $w_1 \dots w_T$, factorize:
+\[ P(w_1, \dots, w_T) = \prod_{t=1}^{T} P(w_t \mid w_1, \dots, w_{t-1}) \approx \prod_{t=1}^{T} P(w_t \mid w_{t-n+1}, \dots, w_{t-1}). \]
+The \emph{Markov assumption} ($n-1$ words of context suffice) makes the model trivial to estimate by counting in a corpus:
+\[ \widehat{P}(w_t \mid w_{t-1}, \dots, w_{t-n+1}) = \frac{\#(w_{t-n+1}, \dots, w_t)}{\#(w_{t-n+1}, \dots, w_{t-1})}. \]
+\paragraph{Other emblematic methods.}
+\begin{itemize}
+    \item Hidden Markov Models for POS tagging and speech recognition.
+    \item Bag-of-Words and TF--IDF for text classification and information retrieval.
+    \item Maximum-entropy / log-linear models for sequence labelling.
+\end{itemize}
+
+\paragraph{Limitations.} Sparse data: most n-grams of order $\geq 4$ never appear in any corpus. Smoothing techniques (Good--Turing, Kneser--Ney) patch the worst sparsity but do not solve the underlying problem. The context window is hard-coded and small. There is no notion of semantic similarity --- ``\emph{cat}'' and ``\emph{kitten}'' are as unrelated to the model as ``\emph{cat}'' and ``\emph{democracy}''.
+
+\subsection{Era 3 --- Neural networks and word embeddings (2013--2017)}
+
+\paragraph{Approach.} Represent each word as a \emph{dense vector} learnt from data. Words that appear in similar contexts receive similar vectors. The model thus generalises across surface forms.
+
+\paragraph{Landmark contributions.}
+\begin{itemize}
+    \item \emph{Word2Vec} (Mikolov et al., 2013): two shallow neural architectures (\emph{skip-gram}, \emph{CBOW}) train word vectors by predicting context from a centre word, or vice-versa. The vectors exhibit striking algebraic regularities: $\overrightarrow{\text{king}} - \overrightarrow{\text{man}} + \overrightarrow{\text{woman}} \approx \overrightarrow{\text{queen}}$.
+    \item \emph{GloVe} (Pennington et al., 2014): global matrix factorization of the word--context co-occurrence matrix.
+    \item \emph{FastText} (Bojanowski et al., 2017): extends Word2Vec to sub-word units, handling out-of-vocabulary words and morphologically rich languages.
+    \item \emph{Sequence models} (LSTMs, GRUs): recurrent networks process sequences without the fixed n-gram window, partially solving the long-context problem.
+    \item \emph{Encoder--decoder architectures with attention} (Bahdanau et al., 2015): a neural translator can ``\emph{attend}'' to all source positions when generating each target token.
+\end{itemize}
+
+\paragraph{Limitations.}
+\begin{itemize}
+    \item Word2Vec / GloVe / FastText produce \emph{static} embeddings: ``\emph{bank}'' has one vector, regardless of whether it refers to a financial institution or a riverside.
+    \item Recurrent networks process sequences strictly left-to-right (or right-to-left), making long-range dependencies hard to capture and parallelisation difficult.
+\end{itemize}
+
+\subsection{Era 4 --- Transformers and large language models (2017--present)}
+
+\paragraph{Approach.} A new architecture --- the \emph{Transformer} --- replaces recurrence by \emph{self-attention}, allowing every token to directly attend to every other token in the sequence. The Transformer decouples sequence length from depth and is fully parallelisable, enabling training on data and parameter scales unattainable for RNNs.
+
+\paragraph{Three foundational papers.}
+\begin{itemize}
+    \item Vaswani et al.\ (2017), \emph{``Attention Is All You Need''}: introduces the Transformer.
+    \item Devlin et al.\ (2018), \emph{BERT}: encoder-only Transformer pretrained by masked language modelling, then fine-tuned on downstream classification, NER, QA. State-of-the-art on dozens of benchmarks.
+    \item Radford et al.\ (2018, 2019, 2020), \emph{GPT-1, GPT-2, GPT-3}: decoder-only Transformer pretrained as a causal language model. Scaling demonstrated \emph{emergent abilities} --- in-context learning, instruction following, chain-of-thought reasoning --- not present in smaller models.
+\end{itemize}
+
+\paragraph{Hallmarks of the era.}
+\begin{itemize}
+    \item \textbf{Contextual embeddings.} A token's representation depends on its surrounding context: ``\emph{bank}'' in a financial sentence and in a river sentence receive different vectors.
+    \item \textbf{Self-supervised pretraining at Web scale.} Models trained on hundreds of billions of tokens of unlabelled text.
+    \item \textbf{Foundation models.} A single pretrained model is adapted (by fine-tuning, prompting, or retrieval augmentation) to dozens of downstream tasks.
+    \item \textbf{Scaling laws} (Kaplan et al., 2020; Hoffmann et al., 2022): test loss decays predictably as a power law in parameters, data, and compute, providing a quantitative roadmap for model design.
+    \item \textbf{Reasoning and tool use.} Modern LLMs can be prompted to produce intermediate reasoning steps (\emph{chain-of-thought}), to call external tools, or to be aligned with human preferences via reinforcement learning from human feedback (RLHF).
+\end{itemize}
+
+\subsection{Synthetic comparison}
+
+\begin{center}
+\begin{tabular}{|l|l|l|l|l|}
+\hline
+\textbf{Era} & \textbf{Representation} & \textbf{Semantics} & \textbf{Scalability} & \textbf{Period} \\
+\hline
+Rules & Symbolic & Manual & Low & 1950--1980 \\
+Statistical (BoW, n-grams) & Counts / sparse vectors & Surface only & Medium & 1990--2010 \\
+TF--IDF & Weighted counts & Partial & Medium & 1990--2010 \\
+Word2Vec / GloVe / FastText & Static dense vectors & Yes (static) & High & 2013--2017 \\
+Transformers / LLMs & Contextual dense vectors & Yes (contextual) & Very high & 2017--present \\
+\hline
+\end{tabular}
+\end{center}
+
+\subsection{The recurring pattern}
+
+\begin{remark}
+Each era addressed a specific failure of its predecessor:
+\begin{itemize}
+    \item Rules $\to$ statistical: \emph{rules don't scale or handle ambiguity probabilistically.}
+    \item Statistical $\to$ neural: \emph{counts cannot capture semantic similarity.}
+    \item Static embeddings $\to$ Transformers: \emph{a word's meaning depends on context.}
+\end{itemize}
+A productive question to ask of any present-day NLP system is: \emph{what is its specific failure mode, and what kind of method could fix it?} The most likely answer points at the next era.
+\end{remark}
+
+\subsection{Worked examples}
+
+\textbf{Example 1 (Era identification --- Easy).}
+Place each method in its era:
+\begin{enumerate}
+    \item Pattern-matching chatbot;
+    \item Trigram language model with Kneser--Ney smoothing;
+    \item BERT fine-tuned for sentiment;
+    \item Word2Vec skip-gram embeddings;
+    \item Hand-coded regex-based information extractor.
+\end{enumerate}
+
+\textit{Solution.} (1) Rule-based; (2) Statistical; (3) Transformers / LLMs; (4) Neural / static embeddings; (5) Rule-based.
+
+\medskip
+
+\textbf{Example 2 (Identifying era from a failure mode --- Medium).}
+A deployed translation system from Modern Standard Arabic to French is fluent on news articles but produces incoherent translations on Tunisian dialect tweets. Which era's failure mode is this, and what era of method would address it?
+
+\textit{Solution.} The failure is a \emph{distributional mismatch}: the training data does not cover the target dialect's surface forms, so the model fails to generalise. This is most consistent with a \emph{static-embedding-era} (or earlier) limitation, because contextual Transformer-era models trained on dialect data would, in principle, handle the variability through sub-word tokenisation and contextualisation. The fix is therefore to \emph{(a)} introduce sub-word tokenisation (FastText-/BPE-style) and \emph{(b)} pretrain on dialect data --- both Transformer-era techniques.
+
+\medskip
+
+\textbf{Example 3 (The bigram inheritance --- Hard).}
+Show that in the limit where the context window is reduced to one previous token, a Transformer language model degenerates into a bigram model.
+
+\textit{Solution sketch.} A Transformer language model defines $P(w_t \mid w_1, \dots, w_{t-1})$ via attention over the entire history. If we restrict the model so that each token attends only to its immediate predecessor (a \emph{causal mask of width $1$}), the conditional becomes $P(w_t \mid w_{t-1})$. With sufficient capacity to memorise the bigram counts, the model would, at convergence, recover the same conditional probabilities as a bigram language model trained on the same corpus. This thought experiment shows that statistical and modern approaches lie on a spectrum of context-window choices; modern systems differ primarily in the \emph{breadth and learned weighting} of context, not in their underlying probabilistic objective.
+
+\subsection{Python snippet: a four-line bigram language model}
+
+The simplest statistical-era artefact is illuminating to implement and evaluate.
+
+\begin{lstlisting}
+from collections import Counter
+import math, random
+
+text = ("the cat sat on the mat the cat sat on the floor "
+        "the dog sat on the mat the dog ran on the floor").split()
+
+bigrams = Counter(zip(text, text[1:]))
+unigrams = Counter(text)
+
+def P(w_next, w_prev):
+    """Conditional bigram probability with smoothing."""
+    return (bigrams[(w_prev, w_next)] + 1) / (unigrams[w_prev] + len(unigrams))
+
+def generate(start, n):
+    seq = [start]
+    for _ in range(n):
+        candidates = [w for w in unigrams if (seq[-1], w) in bigrams]
+        if not candidates:
+            break
+        weights = [P(w, seq[-1]) for w in candidates]
+        seq.append(random.choices(candidates, weights=weights)[0])
+    return " ".join(seq)
+
+print(generate("the", 8))
+\end{lstlisting}
+
+The same conceptual machinery --- conditional probabilities, sampling --- powers GPT-4, scaled by ten orders of magnitude.
+
+\subsection{Exercises}
+\begin{enumerate}
+    \item Date each method to its era (rules / statistical / static neural / Transformer):
+    \begin{enumerate}
+        \item Hidden Markov Model for speech recognition;
+        \item Convolutional neural network for sentiment classification;
+        \item Mistral 7B large language model;
+        \item Porter stemming algorithm;
+        \item TF--IDF cosine retrieval.
+    \end{enumerate}
+    \item Why did n-gram models choose $n \le 5$ in practice, despite the formal benefit of larger $n$? Identify the precise statistical phenomenon and the smoothing techniques designed to mitigate it.
+    \item Word2Vec ``solves'' the n-gram era's most visible failure (no semantic similarity). What new failure does it introduce, and which era addresses it?
+    \item Discuss: each era replaces \emph{hand engineering} by \emph{data-driven learning}. What aspect of NLP, in your judgement, is still hand-engineered today, and what kind of method might learn it?
+    \item (Open-ended forecasting.) Identify a clear failure mode of contemporary LLMs (e.g.\ hallucination, lack of calibrated uncertainty, poor multilingual coverage on low-resource languages such as Tunisian dialects). Speculate on the methodological direction the next era might take to address it.
+\end{enumerate}
+
 \end{document}

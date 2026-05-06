@@ -578,4 +578,191 @@ The toy corpus is too small to deliver high-quality vectors, but the API is iden
     \item (Synthesis.) Discuss why FastText is a natural choice for a sentiment classifier on Tunisian-Arabic Twitter data, while Word2Vec is more suitable for a clean English Wikipedia corpus. Identify two distinct linguistic features of dialectal Arabic that drive this preference.
 \end{enumerate}
 
+\section{Semantic similarity measures}
+
+\subsection{Motivation}
+Once texts have been embedded in a vector space (sparse or dense), the natural way to compare them is geometric. ``How similar are these two documents?'' becomes ``How close are their vectors?''. The choice of similarity measure is far from neutral --- different measures embody different assumptions about what should count as similar. Three measures dominate practice: \textbf{cosine similarity}, \textbf{Euclidean distance}, and the \textbf{dot product}. Understanding their properties is essential for building search engines, clustering algorithms, recommender systems, and the retrieval-augmented generation pattern that sits at the heart of modern Question-Answering.
+
+\subsection{Approach by problem: ranking by similarity}
+\textbf{Problem.} You have embedded $10{,}000$ news articles as TF--IDF vectors. A user submits the short query \emph{``Tunisia football''}. Rank the articles by their relevance to the query.
+
+\textbf{Solution sketch.} Embed the query with the same vectorizer used for the corpus, obtaining a query vector $\mathbf{q} \in \mathbb{R}^{|V|}$. For each article vector $\mathbf{x}_i$, compute a similarity score and sort articles in decreasing order of score. Two issues arise:
+\begin{itemize}
+    \item Documents have very different lengths, hence very different $\ell_2$-norms. A long article will produce a large dot product simply because its vector is large, not because it is more relevant. We need a measure invariant to magnitude.
+    \item Articles in different topical zones should rank far apart even when they share many function words. The measure must give weight to direction, not magnitude.
+\end{itemize}
+Both observations point to \emph{cosine similarity}: the cosine of the angle between query and document vectors.
+
+\subsection{Three classical measures}
+
+Let $\mathbf{a}, \mathbf{b} \in \mathbb{R}^d$ be two vectors.
+
+\begin{definition}[Cosine similarity]
+\[ \cos(\mathbf{a}, \mathbf{b}) = \frac{\mathbf{a}^\top \mathbf{b}}{\|\mathbf{a}\|_2\, \|\mathbf{b}\|_2} = \frac{\sum_{i=1}^{d} a_i b_i}{\sqrt{\sum_{i=1}^{d} a_i^2}\, \sqrt{\sum_{i=1}^{d} b_i^2}}. \]
+The values lie in $[-1, +1]$ and equal $+1$ exactly when $\mathbf{b}$ is a positive scaling of $\mathbf{a}$.
+\end{definition}
+
+\begin{definition}[Dot product]
+\[ \mathbf{a}^\top \mathbf{b} = \sum_{i=1}^{d} a_i b_i. \]
+Faster to compute (no division or square roots) and equal to $\cos(\mathbf{a}, \mathbf{b}) \cdot \|\mathbf{a}\|_2 \cdot \|\mathbf{b}\|_2$. Sensitive to the magnitudes of both vectors.
+\end{definition}
+
+\begin{definition}[Euclidean distance]
+\[ d_2(\mathbf{a}, \mathbf{b}) = \|\mathbf{a} - \mathbf{b}\|_2 = \sqrt{\sum_{i=1}^{d} (a_i - b_i)^2}. \]
+Always non-negative; zero iff $\mathbf{a} = \mathbf{b}$. Sensitive to both magnitude and direction.
+\end{definition}
+
+\begin{definition}[Manhattan ($\ell_1$) distance]
+\[ d_1(\mathbf{a}, \mathbf{b}) = \|\mathbf{a} - \mathbf{b}\|_1 = \sum_{i=1}^{d} |a_i - b_i|. \]
+Used less often in NLP, but practical in high-dimensional spaces and when robustness to outliers matters.
+\end{definition}
+
+\subsection{Properties of cosine similarity}
+
+\begin{property}[Magnitude invariance]
+For any $\lambda > 0$, $\cos(\lambda \mathbf{a}, \mathbf{b}) = \cos(\mathbf{a}, \mathbf{b})$.
+\end{property}
+
+\begin{proof}
+Direct from the definition: scaling $\mathbf{a}$ by $\lambda > 0$ multiplies both numerator and denominator by $\lambda$, leaving the ratio unchanged.
+\end{proof}
+
+This single property is decisive in NLP: TF--IDF vectors of long documents are scaled-up copies of those of shorter documents on the same topic. Cosine similarity correctly considers them equivalent in topic.
+
+\begin{property}[Cosine and Euclidean for unit vectors]
+If $\|\mathbf{a}\|_2 = \|\mathbf{b}\|_2 = 1$, then
+\[ d_2(\mathbf{a}, \mathbf{b})^2 = 2 - 2 \cos(\mathbf{a}, \mathbf{b}). \]
+\end{property}
+
+\begin{proof}
+$d_2(\mathbf{a}, \mathbf{b})^2 = \|\mathbf{a}\|^2 - 2 \mathbf{a}^\top \mathbf{b} + \|\mathbf{b}\|^2 = 1 - 2 \mathbf{a}^\top \mathbf{b} + 1 = 2(1 - \cos(\mathbf{a}, \mathbf{b}))$ since the vectors are unit-norm.
+\end{proof}
+
+\begin{remark}
+Property 2.4.2 means that, after $\ell_2$-normalisation, ranking by cosine and ranking by Euclidean distance are equivalent (one is a monotonic function of the other). Practical libraries exploit this: they store $\ell_2$-normalised vectors and compute dot products, which are mathematically equivalent to cosine but considerably faster.
+\end{remark}
+
+\begin{property}[Cosine similarity is not a metric]
+$1 - \cos(\mathbf{a}, \mathbf{b})$ does not satisfy the triangle inequality and is therefore not a metric on $\mathbb{R}^d$. (After $\ell_2$-normalisation, the angular distance $\arccos(\cos(\mathbf{a}, \mathbf{b}))$ is a metric on the unit sphere.)
+\end{property}
+
+\subsection{When to use which}
+
+\begin{center}
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Measure} & \textbf{Use when} & \textbf{Avoid when} \\
+\hline
+Cosine & Comparing texts of varying length; TF--IDF; static embeddings & Magnitude carries information \\
+Dot product & Speed matters; vectors already $\ell_2$-normalised & Magnitudes are heterogeneous \\
+Euclidean & Clustering ($k$-means in normalised space); coordinates with absolute meaning & Documents have varying length and you want length-invariance \\
+Manhattan & High-dimensional vectors with outliers; robustness matters & Dense float embeddings with normal-like distributions \\
+\hline
+\end{tabular}
+\end{center}
+
+\paragraph{Rule of thumb.} For text classification or retrieval with TF--IDF or static embeddings, use cosine. For clustering with $k$-means, $\ell_2$-normalise first then use Euclidean (equivalent to spherical $k$-means).
+
+\subsection{Applications}
+
+\paragraph{Semantic search.} Embed every document; embed each incoming query; return the top-$k$ documents by cosine similarity. This pattern powers ``related articles'' widgets, web search re-ranking, and the \emph{retrieval} step of \emph{retrieval-augmented generation} (RAG) for LLMs.
+
+\paragraph{Document deduplication.} In a corpus scraped from the Web, near-duplicate documents abound. Cluster cosine-similar pairs above a threshold (e.g.\ $0.95$) and merge them.
+
+\paragraph{Recommendation.} Represent users and items in the same vector space; recommend items closest to the user's profile vector.
+
+\paragraph{Clustering.} Group documents into $k$ topics by spherical $k$-means in the embedding space.
+
+\paragraph{Cross-lingual similarity.} If embeddings are aligned across languages, an Arabic document can be matched directly to its French paraphrase by cosine similarity, without translation.
+
+\subsection{The retrieval pattern}
+
+The pattern that re-appears throughout modern NLP, including in the inner loop of RAG systems, is:
+\[ \boxed{ \text{query string} \xrightarrow[\text{embed}]{} \mathbf{q} \xrightarrow[\text{nearest neighbours}]{} \text{top-}k \text{ documents} } \]
+At scale, exact nearest-neighbour search becomes infeasible. Approximate nearest-neighbour (ANN) algorithms --- HNSW, FAISS, ScaNN, IVF-PQ --- trade a small loss in precision for a $10$--$100\times$ speed-up. We will use FAISS in the lab for a Tunisian-news search engine.
+
+\subsection{Worked examples}
+
+\textbf{Example 1 (Cosine vs dot product on length --- Easy).}
+Two TF--IDF vectors on a vocabulary of $\{\emph{Tunisia, Tunis, beach, food}\}$ are
+\[ \mathbf{a} = (1, 1, 0, 0)^\top, \quad \mathbf{b} = (3, 3, 0, 0)^\top. \]
+Compute the cosine similarity and the dot product. Comment.
+
+\textit{Solution.}
+\[ \mathbf{a}^\top \mathbf{b} = 3 + 3 = 6, \quad \|\mathbf{a}\| = \sqrt{2}, \quad \|\mathbf{b}\| = \sqrt{18} = 3\sqrt{2}. \]
+\[ \cos(\mathbf{a}, \mathbf{b}) = \frac{6}{\sqrt{2} \cdot 3\sqrt{2}} = \frac{6}{6} = 1. \]
+The dot product is $6$, but cosine is $1$ --- the two vectors are scalar multiples and therefore identical in direction. Cosine correctly recognises that they encode the same topic distribution; the dot product, sensitive to magnitude, would mislead a length-sensitive ranker.
+
+\medskip
+
+\textbf{Example 2 (Ranking by similarity --- Medium).}
+A query $\mathbf{q} = (1, 1, 0, 0)^\top$ is compared against three document vectors:
+\[ \mathbf{d}_1 = (1, 1, 1, 0)^\top, \quad \mathbf{d}_2 = (2, 0, 0, 0)^\top, \quad \mathbf{d}_3 = (1, 1, 1, 1)^\top. \]
+Rank the documents by cosine similarity to $\mathbf{q}$.
+
+\textit{Solution.}
+$\|\mathbf{q}\| = \sqrt{2}$, $\|\mathbf{d}_1\| = \sqrt{3}$, $\|\mathbf{d}_2\| = 2$, $\|\mathbf{d}_3\| = 2$.
+$\mathbf{q}^\top \mathbf{d}_1 = 2$, $\mathbf{q}^\top \mathbf{d}_2 = 2$, $\mathbf{q}^\top \mathbf{d}_3 = 2$.
+\[ \cos(\mathbf{q}, \mathbf{d}_1) = 2/(\sqrt{2}\sqrt{3}) \approx 0.816, \quad \cos(\mathbf{q}, \mathbf{d}_2) = 2/(\sqrt{2}\cdot 2) = 1/\sqrt{2} \approx 0.707, \]
+\[ \cos(\mathbf{q}, \mathbf{d}_3) = 2/(\sqrt{2} \cdot 2) \approx 0.707. \]
+Ranking: $\mathbf{d}_1 \succ \mathbf{d}_2 \approx \mathbf{d}_3$.
+$\mathbf{d}_1$ is closest to $\mathbf{q}$ because both query terms appear and the document is short. $\mathbf{d}_2$ overweights one term; $\mathbf{d}_3$ contains both query terms but also two off-topic ones, diluting the cosine.
+
+\medskip
+
+\textbf{Example 3 (Cosine vs Euclidean for clustering --- Hard).}
+Argue why $k$-means clustering in TF--IDF space typically requires \emph{prior $\ell_2$-normalisation} of the vectors. What pathology arises if normalisation is skipped?
+
+\textit{Solution.} $k$-means minimises within-cluster sum of squared Euclidean distances. Without normalisation, document magnitudes dominate the distance: long documents have large $\|\mathbf{x}\|$, hence large $\|\mathbf{x} - \boldsymbol{\mu}\|$ regardless of topic. As a result, the algorithm tends to form clusters by length rather than by topic --- precisely the wrong outcome.
+
+After $\ell_2$-normalisation, all vectors lie on the unit sphere; Euclidean distance becomes a monotone function of cosine similarity (Property 2.4.2), and $k$-means is equivalent to spherical $k$-means, which clusters by topic regardless of length. Practitioners therefore always normalise before $k$-means in NLP.
+
+\subsection{Python snippet: cosine, Euclidean, and FAISS}
+
+\begin{lstlisting}
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
+
+corpus = [
+    "Tunisia football national team won the cup",
+    "the cup of tea I had this morning was great",
+    "national football leagues across Africa",
+    "great cup of coffee at this Tunis cafe",
+]
+
+vec = TfidfVectorizer().fit(corpus)
+X = vec.transform(corpus)
+
+q = vec.transform(["Tunisia football"])
+
+print("Cosine similarities to query:")
+for i, s in enumerate(cosine_similarity(q, X).ravel()):
+    print(f"  doc {i}: {s:.3f} -- {corpus[i]}")
+
+print("\nEuclidean distances to query:")
+for i, s in enumerate(euclidean_distances(q, X).ravel()):
+    print(f"  doc {i}: {s:.3f} -- {corpus[i]}")
+
+# Equivalent dot product after L2-normalisation
+from sklearn.preprocessing import normalize
+Xn = normalize(X, norm="l2")
+qn = normalize(q, norm="l2")
+print("\nDot product on normalised vectors (== cosine):")
+print(np.asarray(qn @ Xn.T.toarray()).ravel().round(3))
+\end{lstlisting}
+
+For a million-document index, replace these dense methods by an approximate-nearest-neighbour engine (e.g.\ \texttt{faiss.IndexFlatIP} or \texttt{IndexHNSWFlat}).
+
+\subsection{Exercises}
+\begin{enumerate}
+    \item Compute, by hand, the cosine similarity, dot product, and Euclidean distance between
+    \[ \mathbf{a} = (1, 2, 0, 1)^\top, \quad \mathbf{b} = (2, 4, 0, 2)^\top, \quad \mathbf{c} = (0, 1, 1, 1)^\top. \]
+    Comment on the relative ranking of $\mathbf{a}$ to $\mathbf{b}$ vs $\mathbf{a}$ to $\mathbf{c}$ under each measure.
+    \item Show, using only the definition, that $\cos(\mathbf{a}, \mathbf{a}) = 1$ for every non-zero vector $\mathbf{a}$, and that $\cos(\mathbf{a}, -\mathbf{a}) = -1$.
+    \item Prove that the angular distance $\theta(\mathbf{a}, \mathbf{b}) = \arccos(\cos(\mathbf{a}, \mathbf{b}))$ satisfies the triangle inequality on the unit sphere. (Sketch the geometric argument; full proof requires spherical geometry.)
+    \item Why is the dot product the preferred similarity in production search systems built on dense embeddings? (Hint: think about $\ell_2$-normalisation and hardware.)
+    \item (Synthesis.) Sketch a Tunisian-news semantic search engine: which embedding model would you use, what similarity measure, what indexing approach (exact vs approximate), and how would you evaluate retrieval quality? Identify two failure cases that purely lexical (TF--IDF) search would miss but a dense, multilingual model would handle.
+\end{enumerate}
+
 \end{document}
